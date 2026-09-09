@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "preship": "eslint src/ scripts/ && vitest run",
     "contract": "node scripts/contract.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "conformance": "node scripts/conformance.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",

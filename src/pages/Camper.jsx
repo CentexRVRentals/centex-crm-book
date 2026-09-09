@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  fetchListing, fetchPhotos, fetchAddons, fetchAmenities,
+  fetchListing, fetchPhotos, fetchAddons, fetchAmenities, fetchBusyDates,
   money, text,
 } from "../lib/listings.js";
+import DatePicker from "../components/DatePicker.jsx";
 import { Loading, ErrorState, NotFound } from "../components/States.jsx";
 
 // One camper. Photos, specs, policies, add-ons, price.
@@ -19,6 +20,9 @@ import { Loading, ErrorState, NotFound } from "../components/States.jsx";
 export default function Camper() {
   const { unitId } = useParams();
   const [state, setState] = useState({ status: "loading" });
+  // Dates live on the PAGE, not inside the picker. b0.4's request form needs
+  // them, and lifting them later would mean rewriting the picker's interface.
+  const [dates, setDates] = useState({ start: "", end: "" });
 
   async function load() {
     setState({ status: "loading" });
@@ -27,16 +31,16 @@ export default function Camper() {
       if (!listing) return setState({ status: "missing" });
       // Photos, add-ons and amenities fetched together AFTER the listing,
       // because without a listing there is nothing to attach them to.
-      const [photos, addons, amenities] = await Promise.all([
-        fetchPhotos(unitId), fetchAddons(unitId), fetchAmenities(unitId),
+      const [photos, addons, amenities, busy] = await Promise.all([
+        fetchPhotos(unitId), fetchAddons(unitId), fetchAmenities(unitId), fetchBusyDates(unitId),
       ]);
-      setState({ status: "ready", listing, photos, addons, amenities });
+      setState({ status: "ready", listing, photos, addons, amenities, busy });
     } catch (err) {
       setState({ status: "error", detail: err?.message || String(err) });
     }
   }
 
-  useEffect(() => { load(); }, [unitId]);
+  useEffect(() => { load(); setDates({ start: "", end: "" }); }, [unitId]);
 
   if (state.status === "loading") return <Loading what="this camper" />;
   if (state.status === "missing") return <NotFound what="camper" />;
@@ -89,6 +93,7 @@ export default function Camper() {
             ) : null}
           </div>
 
+          <DatePicker listing={u} busy={state.busy} value={dates} onChange={setDates} />
           <Specs listing={u} />
           <Addons items={state.addons} />
         </div>
