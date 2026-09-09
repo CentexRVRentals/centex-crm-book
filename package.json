@@ -1,11 +1,11 @@
 {
   "name": "centex-crm-book",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/check-bundle.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "preship": "eslint src/ scripts/ && vitest run",

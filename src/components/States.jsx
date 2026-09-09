@@ -50,11 +50,25 @@ export function NotFound({ what = "camper" }) {
 }
 
 export function Header() {
+  // VERSION AND BUILD TIME, ON EVERY PAGE.
+  //
+  // Added because a screenshot of the deployed site could not be told apart
+  // from a screenshot of the previous release — a missing button read as a bug
+  // when it was simply an older bundle. Both numbers are injected from
+  // package.json and the build clock by vite.config.js; neither is written
+  // down anywhere a person could forget to update.
+  //
+  // The build time is what tells you the DEPLOY happened. Two builds of the
+  // same version look identical, and one of them might be the one still in
+  // Netlify's cache.
   return (
     <header className="site-head">
       <div className="wrap">
         <h1><Link to="/">Centex RV Rentals</Link></h1>
         <span className="tag">Kyle, TX</span>
+        <span className="ver" title={`built ${__BUILD_TIME__} UTC`}>
+          b{__APP_VERSION__}
+        </span>
       </div>
     </header>
   );

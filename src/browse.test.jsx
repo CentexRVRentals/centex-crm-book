@@ -25,9 +25,9 @@
 // the real database, and it is a separate, deliberate, manual step.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import React from "react";
+import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { act } from "react-dom/test-utils";
+
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 // ----------------------------------------------------------------------------

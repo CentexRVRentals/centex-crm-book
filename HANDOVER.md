@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Version** | `b0.1` — see `CONTRACT_VERSION` in `src/lib/contract.js` |
+| **Version** | `b0.5.0` — `package.json`, injected into the header at build. **Shown top-right on every page**, with the build time on hover. |
 | **Repo** | `C:\dev\centex-crm-book` |
 | **Deployed** | https://centex-crm-book.netlify.app/ — **reviewable, linked from nowhere** until swap-over |
 | **Stack** | Vite + React (JS, not TS), plain CSS, React Router. No Tailwind. |
@@ -194,4 +194,8 @@ handles it; the gallery will be empty until photos are uploaded in the CRM.
 
 | | |
 |---|---|
+| **b0.5** | **The version is on the page.** A screenshot of the deployed site could not be told apart from the previous release — a missing button read as a bug when it was an older bundle. `package.json` is the one place the number lives; `vite.config.js` injects it and the build time. A guard fails if any source file hardcodes a version, and if HANDOVER's Version row disagrees with `package.json`. **The build time is what tells you the deploy happened**: two builds of b0.4 look identical and one may still be in Netlify's cache. |
+| **b0.4** | **The request form.** Name, contact, delivery if the camper offers it, the honeypot, submit to `request-booking`, confirmation at `/requested/:reservationNum` with its own URL so it survives a refresh. Server refusals are rendered WORD FOR WORD — those sentences were written for a guest, and paraphrasing means two reasons exist for one refusal. The wording never says booked or confirmed. Two mutation checks found a missing guard: replacing `setErrors(result.errors)` with a generic sentence passed the whole suite, because the lib test proved the sentences arrive and nothing proved they reach the screen. |
+| **b0.3** | **The date picker and the conformance test.** Busy days struck through and unclickable, so a guest cannot pick a week the server would refuse. `npm run conformance` builds a corpus from real availability and runs every case through BOTH this repo's `checkDates` and the live Edge Function via `dryRun`, naming any disagreement and which direction it goes. That is what justifies implementing the rules twice instead of publishing a package (CRM §4.163). |
+| **b0.2** | **Browse.** The grid and the camper page, read-only. Every field coerced in one place, because optional chaining guards a key being absent and says nothing about its type. Hostile-data guards render every listing column as every wrong type. |
 | **b0.1** | The harness and the contract. `contract.js` lists every column this site reads; `npm run contract` checks all five views and the Edge Function against the live database, using the ANON key — checking with a service-role key would prove the columns exist for somebody who can read everything, which is not the question. Offline guards: no CRM import, no base table, no hardcoded URL or key, every `.from()` in the contract. No UI. |

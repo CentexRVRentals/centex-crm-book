@@ -29,7 +29,16 @@ export default [
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",
-      globals: { ...globals.browser, ...globals.node },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        // Injected at build by vite.config.js from package.json. no-undef
+        // cannot see a `define`, so without these two the sweep reports a real
+        // rule against code that is correct — and a rule that cries wolf is a
+        // rule people stop reading (see the CRM's §4.156).
+        __APP_VERSION__: "readonly",
+        __BUILD_TIME__: "readonly",
+      },
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
     rules: {

@@ -5,7 +5,9 @@ import {
   money, text,
 } from "../lib/listings.js";
 import DatePicker from "../components/DatePicker.jsx";
+import RequestForm from "../components/RequestForm.jsx";
 import { Loading, ErrorState, NotFound } from "../components/States.jsx";
+import { checkDates, todayCentral } from "../lib/dates.js";
 
 // One camper. Photos, specs, policies, add-ons, price.
 //
@@ -23,6 +25,9 @@ export default function Camper() {
   // Dates live on the PAGE, not inside the picker. b0.4's request form needs
   // them, and lifting them later would mean rewriting the picker's interface.
   const [dates, setDates] = useState({ start: "", end: "" });
+  // The form replaces the picker rather than sitting under it. On a phone a
+  // form below a calendar is a form nobody scrolls to.
+  const [requesting, setRequesting] = useState(false);
 
   async function load() {
     setState({ status: "loading" });
@@ -40,7 +45,7 @@ export default function Camper() {
     }
   }
 
-  useEffect(() => { load(); setDates({ start: "", end: "" }); }, [unitId]);
+  useEffect(() => { load(); setDates({ start: "", end: "" }); setRequesting(false); }, [unitId]);
 
   if (state.status === "loading") return <Loading what="this camper" />;
   if (state.status === "missing") return <NotFound what="camper" />;
@@ -93,11 +98,45 @@ export default function Camper() {
             ) : null}
           </div>
 
-          <DatePicker listing={u} busy={state.busy} value={dates} onChange={setDates} />
+          {requesting ? (
+            <RequestForm
+              listing={u}
+              busy={state.busy}
+              dates={dates}
+              onCancel={() => setRequesting(false)}
+            />
+          ) : (
+            <>
+              <DatePicker listing={u} busy={state.busy} value={dates} onChange={setDates} />
+              {dates.start && dates.end ? (
+                <RequestCta listing={u} busy={state.busy} dates={dates} onStart={() => setRequesting(true)} />
+              ) : null}
+            </>
+          )}
           <Specs listing={u} />
           <Addons items={state.addons} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// Only appears once the dates are valid. A call to action next to a range the
+// server would refuse is a button that leads somewhere disappointing.
+function RequestCta({ listing, busy, dates, onStart }) {
+  const ok = checkDates({
+    start: dates.start, end: dates.end, busy,
+    minimumNights: listing.minimumNights, today: todayCentral(),
+  }).ok;
+  if (!ok) return null;
+  return (
+    <div className="panel">
+      <button className="btn" style={{ marginTop: 0, width: "100%" }} onClick={onStart}>
+        Request these dates
+      </button>
+      <p className="card-meta" style={{ margin: "8px 0 0", textAlign: "center" }}>
+        No payment now — we'll confirm first.
+      </p>
     </div>
   );
 }

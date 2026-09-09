@@ -19,8 +19,20 @@ import react from "@vitejs/plugin-react";
 // somebody not writing the test.
 export default defineConfig({
   plugins: [react()],
+  // The same injection vite.config.js does. Without it every component that
+  // shows the version throws ReferenceError under test — which is a real
+  // failure mode worth having the harness share rather than special-case.
+  define: {
+    __APP_VERSION__: JSON.stringify("test"),
+    __BUILD_TIME__: JSON.stringify("0000-00-00 00:00"),
+  },
   test: {
     environment: "jsdom",
+    // Sets IS_REACT_ACT_ENVIRONMENT. Without it every rendering test throws
+    // "The current testing environment is not configured to support act(...)"
+    // — and the console.error mocks in the render suites hide the warning that
+    // precedes it, so it can pass on one machine and fail on another.
+    setupFiles: ["./src/test-setup.js"],
     include: ["src/**/*.test.{js,jsx}"],
     // 30s, not the 5s default. The hostile-data cases render every column as
     // every wrong type — hundreds of mounts in one `it`.
