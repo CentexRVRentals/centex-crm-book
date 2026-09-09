@@ -1,0 +1,15 @@
+# b0.6 — NOT INDEXABLE YET.
+#
+# The site is reviewable and linked from nowhere until swap-over. A half-built
+# site in Google is much harder to undo than to prevent.
+#
+# AT SWAP-OVER, replace the two lines below with:
+#
+#   User-agent: *
+#   Allow: /
+#   Sitemap: https://centexrvrentals.com/sitemap.xml
+#
+# and remove the robots meta tag from index.html. Both, or the site is still
+# invisible — a meta tag and a robots.txt disagree silently.
+User-agent: *
+Disallow: /

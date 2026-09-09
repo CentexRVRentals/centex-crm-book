@@ -40,11 +40,28 @@ export function ErrorState({ title = "We couldn't load that", detail, onRetry })
 }
 
 export function NotFound({ what = "camper" }) {
+  // Deliberately offers the way out rather than only stating the problem. A
+  // guest who followed a stale link is one click from the fleet; a dead end
+  // is a lost booking.
+  //
+  // NOT A REAL 404 STATUS. Netlify serves index.html with a 200 for every path
+  // so the router can handle it — that is what public/_redirects does, and it
+  // is what makes /camper/:id work on a refresh. A crawler therefore sees 200
+  // here. Acceptable while the site is noindex; worth revisiting at swap-over
+  // if stale links to removed campers ever become a real problem.
+  const isPage = what === "page";
   return (
     <div className="state">
-      <h2>We couldn't find that {what}</h2>
-      <p>It may have been taken off the site.</p>
+      <h2>{isPage ? "That page isn't here" : `We couldn't find that ${what}`}</h2>
+      <p>
+        {isPage
+          ? "The link may be out of date."
+          : "It may have been taken off the site, or booked and retired."}
+      </p>
       <Link className="btn" to="/">See what's available</Link>
+      <p className="card-meta" style={{ marginTop: 18 }}>
+        Or call us — we know the fleet better than the website does.
+      </p>
     </div>
   );
 }

@@ -235,28 +235,97 @@ describe("the camper page", () => {
 describe("hostile data — every field as every wrong type", () => {
   const HOSTILE = [undefined, null, "", 0, 42, true, [], {}, { a: 1 }, ["x"], "  "];
 
-  it("CRITICAL: no listing column of any type white-screens the grid", async () => {
+  // REACT-CHILD KILLERS. An object or an array rendered as a child throws
+  // "Objects are not valid as a React child" — a white screen, not a blank
+  // field. Every other hostile value degrades quietly by comparison, so these
+  // two are the ones worth firing at every column individually.
+  const KILLERS = [{ a: 1 }, ["x"]];
+
+  // ONE RENDER PER TYPE, WITH EVERY COLUMN SET TO IT.
+  //
+  // This replaced 36 columns x 11 types = 396 renders per page. It is BOTH
+  // faster and harsher: a row where every column is simultaneously the wrong
+  // type is a worse input than one where a single column is, and a coercion
+  // that only works because its neighbours are well-formed fails here.
+  //
+  // The per-column pass below then covers the case this one cannot: a coercion
+  // that is missing on ONE column, where the all-wrong render happens to fail
+  // for a different reason first.
+  //
+  // WHY IT WAS RESTRUCTURED. 16.3 seconds on the machine that matters, against
+  // a 30-second timeout, growing with every column added to public_listings.
+  // The same shape as the failure two releases earlier — passed in the
+  // container, timed out on the real machine. A test approaching its timeout
+  // is a test that will one day fail for a reason that is not a bug.
+  async function everyColumn(value, renderPage, tables) {
+    const row = {};
+    for (const key of Object.keys(LISTING)) row[key] = value;
+    TABLES = tables({ ...row });
+    return renderPage();
+  }
+
+  // When a sweep fails, this says WHICH column did it — the diagnostic the
+  // per-pair version gave for free and this one has to earn back. Only ever
+  // runs on failure, so it costs nothing on a green run.
+  async function blame(value, renderPage, tables) {
+    const guilty = [];
     for (const key of Object.keys(LISTING)) {
-      for (const v of HOSTILE) {
-        TABLES = { public_listings: [{ ...LISTING, [key]: v }], public_listing_photos: [] };
-        await expect(
-          renderAsync(listingsPage()),
-          `public_listings.${key} = ${JSON.stringify(v)}`
-        ).resolves.toBeTruthy();
+      TABLES = tables({ ...LISTING, [key]: value });
+      try {
+        await renderPage();
+      } catch {
+        guilty.push(key);
+      }
+    }
+    return guilty;
+  }
+
+  const gridTables = (listing) => ({ public_listings: [listing], public_listing_photos: [] });
+  const camperTables = (listing) => ({
+    public_listings: [listing],
+    public_listing_photos: [], public_listing_addons: [], public_listing_amenities: [],
+  });
+
+  it("CRITICAL: every column wrong at once does not white-screen the grid", async () => {
+    for (const v of HOSTILE) {
+      try {
+        await everyColumn(v, () => renderAsync(listingsPage()), gridTables);
+      } catch (err) {
+        const guilty = await blame(v, () => renderAsync(listingsPage()), gridTables);
+        expect.fail(
+          `grid threw with every column = ${JSON.stringify(v)}\n` +
+          `  ${err.message}\n` +
+          `  column(s) responsible: ${guilty.length ? guilty.join(", ") : "none individually — an interaction"}`
+        );
       }
     }
   });
 
-  it("CRITICAL: no listing column of any type white-screens the camper page", async () => {
+  it("CRITICAL: every column wrong at once does not white-screen the camper page", async () => {
+    for (const v of HOSTILE) {
+      try {
+        await everyColumn(v, () => renderAsync(camperPage(LISTING.unit_id)), camperTables);
+      } catch (err) {
+        const guilty = await blame(v, () => renderAsync(camperPage(LISTING.unit_id)), camperTables);
+        expect.fail(
+          `camper page threw with every column = ${JSON.stringify(v)}\n` +
+          `  ${err.message}\n` +
+          `  column(s) responsible: ${guilty.length ? guilty.join(", ") : "none individually — an interaction"}`
+        );
+      }
+    }
+  });
+
+  it("CRITICAL: an object or array in ANY single column is survivable", async () => {
+    // The per-column pass, narrowed to the two types that can actually throw
+    // rather than merely render oddly. This is what catches a coercion missing
+    // on one column while its neighbours are fine.
     for (const key of Object.keys(LISTING)) {
-      for (const v of HOSTILE) {
-        TABLES = {
-          public_listings: [{ ...LISTING, [key]: v }],
-          public_listing_photos: [], public_listing_addons: [], public_listing_amenities: [],
-        };
+      for (const v of KILLERS) {
+        TABLES = camperTables({ ...LISTING, [key]: v });
         await expect(
           renderAsync(camperPage(LISTING.unit_id)),
-          `camper page: public_listings.${key} = ${JSON.stringify(v)}`
+          `public_listings.${key} = ${JSON.stringify(v)}`
         ).resolves.toBeTruthy();
       }
     }

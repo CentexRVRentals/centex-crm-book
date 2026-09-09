@@ -1,0 +1,22 @@
+# Line endings, decided once.
+#
+# Without this, Git guesses per-machine: on Windows it rewrites LF to CRLF on
+# checkout and back on commit, which produces "warning: LF will be replaced by
+# CRLF" on every add and can show files as modified that nobody touched.
+#
+# LF in the repository for everything. Editors on Windows handle LF fine, and a
+# repository whose contents depend on which machine cloned it is a repository
+# that will one day produce a diff nobody wrote.
+#
+# NOT the same choice as the CRM repo, which is CRLF throughout because it grew
+# that way and its guards assert it byte for byte. Two repos, two conventions,
+# each internally consistent — which is the point of them being two repos.
+* text=auto eol=lf
+
+# Binary: never touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

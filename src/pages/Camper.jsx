@@ -8,6 +8,7 @@ import DatePicker from "../components/DatePicker.jsx";
 import RequestForm from "../components/RequestForm.jsx";
 import { Loading, ErrorState, NotFound } from "../components/States.jsx";
 import { checkDates, todayCentral } from "../lib/dates.js";
+import { usePageMeta, camperMeta } from "../lib/meta.js";
 
 // One camper. Photos, specs, policies, add-ons, price.
 //
@@ -46,6 +47,11 @@ export default function Camper() {
   }
 
   useEffect(() => { load(); setDates({ start: "", end: "" }); setRequesting(false); }, [unitId]);
+
+  // Hooks cannot be called conditionally, so this runs on every render —
+  // including while loading, when it falls back to the site default. That is
+  // correct: a page that is still loading should not claim a camper's title.
+  usePageMeta(camperMeta(state.listing, state.photos?.[0]?.url));
 
   if (state.status === "loading") return <Loading what="this camper" />;
   if (state.status === "missing") return <NotFound what="camper" />;

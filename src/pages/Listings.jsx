@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchListings, fetchCoverPhotos, money, text } from "../lib/listings.js";
 import { Loading, ErrorState } from "../components/States.jsx";
+import { usePageMeta } from "../lib/meta.js";
 
 // The grid. Every camper in `public_listings`, which is every non-retired
 // camper with a price — currently eleven.
@@ -26,6 +27,14 @@ export default function Listings() {
   }
 
   useEffect(() => { load(); }, []);
+
+  // Set explicitly rather than left to index.html, so navigating back from a
+  // camper page restores the title instead of keeping that camper's.
+  usePageMeta({
+    title: "Camper & travel trailer rentals in Kyle, TX | Centex RV Rentals",
+    description: "Browse our fleet of travel trailers. Pick up from us in Kyle, Texas, or have it delivered to your site.",
+    path: "/",
+  });
 
   if (state.status === "loading") return <Loading what="campers" />;
   if (state.status === "error") {
