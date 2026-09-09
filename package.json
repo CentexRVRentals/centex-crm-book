@@ -8,21 +8,28 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "preship": "eslint src/ && vitest run"
+    "preship": "eslint src/ scripts/ && vitest run",
+    "contract": "node scripts/contract.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@supabase/supabase-js": "^2.116.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.1.0",
-    "eslint": "^10.9.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.10.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.4",
-    "globals": "^17.11.0",
-    "vite": "^8.2.2"
+    "globals": "^17.12.0",
+    "jsdom": "^30.0.1",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
   }
 }
