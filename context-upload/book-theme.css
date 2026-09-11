@@ -1,0 +1,167 @@
+/* Carried from the CRM so the two read as one company. */
+:root {
+  --pine:   #3D6B54;
+  --pine-d: #2E5140;
+  --accent: #A87F2F;
+  --rust:   #AE4331;
+  --ink:    #1B1B18;
+  --ink-s:  #5A574F;
+  --cream:  #F5F3EA;
+  --card:   #FFFFFF;
+  --line:   #DCD7C8;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(27,27,24,.08), 0 4px 14px rgba(27,27,24,.05);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-height: 100%; }
+body {
+  background: var(--cream);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+
+/* Header ------------------------------------------------------------------ */
+.site-head { background: var(--pine); color: #fff; padding: 18px 0; }
+.site-head .wrap { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.site-head h1 { font-size: 1.25rem; margin: 0; letter-spacing: .3px; }
+.site-head .tag { color: #DCE7E0; font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; }
+
+/* Grid -------------------------------------------------------------------- */
+.grid { display: grid; gap: 20px; padding: 28px 0 48px;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+        overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column;
+        transition: transform .12s ease, box-shadow .12s ease; }
+.card:hover { transform: translateY(-2px); box-shadow: 0 2px 6px rgba(27,27,24,.1), 0 10px 24px rgba(27,27,24,.08); }
+.card-img { aspect-ratio: 4 / 3; background: #E8E4D6; display: block; width: 100%; object-fit: cover; }
+.card-img.empty { display: grid; place-items: center; color: var(--ink-s); font-size: .82rem; }
+.card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.card-body h2 { margin: 0; font-size: 1.05rem; }
+.card-meta { color: var(--ink-s); font-size: .85rem; }
+.card-price { margin-top: auto; padding-top: 8px; font-weight: 600; color: var(--pine); }
+.card-price small { font-weight: 400; color: var(--ink-s); }
+
+/* Camper page ------------------------------------------------------------- */
+.back { display: inline-block; margin: 22px 0 6px; color: var(--ink-s); font-size: .9rem; }
+.back:hover { color: var(--ink); }
+.detail { display: grid; gap: 30px; padding-bottom: 60px; grid-template-columns: 1fr; }
+@media (min-width: 860px) { .detail { grid-template-columns: 1.5fr 1fr; align-items: start; } }
+
+.gallery { display: grid; gap: 10px; }
+.gallery img { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); display: block; }
+.gallery .thumbs { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+.gallery .thumbs img { aspect-ratio: 4/3; object-fit: cover; cursor: pointer; }
+.gallery .thumbs img[aria-current="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.no-photos { aspect-ratio: 16/9; border: 1px dashed var(--line); border-radius: var(--radius);
+             display: grid; place-items: center; color: var(--ink-s); background: #EFECE0; }
+
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+         padding: 18px 20px; box-shadow: var(--shadow); }
+.panel + .panel { margin-top: 18px; }
+.panel h3 { margin: 0 0 10px; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-s); }
+.price-big { font-size: 1.8rem; font-weight: 600; color: var(--pine); }
+.price-big small { font-size: .9rem; font-weight: 400; color: var(--ink-s); }
+
+.specs { list-style: none; margin: 0; padding: 0; }
+.specs li { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .92rem; }
+.specs li:last-child { border-bottom: 0; }
+.specs .k { color: var(--ink-s); }
+
+.tags { display: flex; flex-wrap: wrap; gap: 7px; }
+.tag { font-size: .78rem; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); background: #FAF8F1; }
+.tag.no { color: var(--ink-s); }
+
+.rules { margin: 0; padding-left: 18px; font-size: .92rem; }
+.rules li { margin-bottom: 5px; }
+
+.addon { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.addon:last-child { border-bottom: 0; }
+.addon .n { font-weight: 500; }
+.addon .d { color: var(--ink-s); font-size: .85rem; }
+.addon .req { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+
+.empty-note { color: var(--ink-s); font-size: .9rem; font-style: italic; }
+
+/* States ------------------------------------------------------------------ */
+.state { padding: 60px 0; text-align: center; color: var(--ink-s); }
+.state h2 { color: var(--ink); margin: 0 0 8px; }
+.state .why { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem;
+              background: #EFECE0; padding: 8px 12px; border-radius: 6px; display: inline-block;
+              margin-top: 12px; max-width: 640px; text-align: left; }
+.btn { display: inline-block; margin-top: 16px; background: var(--pine); color: #fff;
+       padding: 9px 18px; border-radius: var(--radius); border: 0; font-size: .95rem; cursor: pointer; }
+
+/* Date picker -------------------------------------------------------------- */
+.picker { margin-top: 18px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cal-nav { background: none; border: 1px solid var(--line); border-radius: 8px; width: 32px; height: 32px;
+           font-size: 1.1rem; line-height: 1; cursor: pointer; color: var(--ink); }
+.cal-nav:hover { background: #FAF8F1; }
+.cal-dow, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.cal-dow { color: var(--ink-s); font-size: .72rem; text-align: center; margin-bottom: 4px; }
+.cal-day { aspect-ratio: 1; border: 1px solid transparent; border-radius: 8px; background: #FAF8F1;
+           color: var(--ink); font-size: .88rem; cursor: pointer; padding: 0; }
+.cal-day:hover:not(:disabled) { border-color: var(--accent); }
+.cal-day.out { color: #B9B4A5; background: transparent; }
+/* Not available: struck through as well as greyed, so it reads as unavailable
+   rather than merely low-contrast — which matters on a phone in sunlight. */
+.cal-day.off { color: #B9B4A5; background: #EFECE0; cursor: not-allowed; text-decoration: line-through; }
+.cal-day.sel { background: var(--pine); color: #fff; border-color: var(--pine-d); font-weight: 600; }
+.cal-day.mid { background: #DCE7E0; }
+.cal-legend { display: flex; gap: 16px; margin-top: 10px; font-size: .78rem; color: var(--ink-s); }
+.cal-legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px;
+                  vertical-align: -1px; }
+.cal-legend .sw.sel { background: var(--pine); }
+.cal-legend .sw.off { background: #EFECE0; border: 1px solid var(--line); }
+.cal-summary { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.cal-errors { margin: 6px 0 0; padding-left: 18px; color: var(--rust); font-size: .88rem; }
+.btn.ghost { background: none; color: var(--ink-s); border: 1px solid var(--line); margin-top: 10px;
+             padding: 6px 12px; font-size: .85rem; }
+.btn.ghost:hover { color: var(--ink); border-color: var(--ink-s); }
+
+/* Request form ------------------------------------------------------------- */
+.form { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+.form label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--ink-s); }
+.form input, .form textarea {
+  font: inherit; font-size: .95rem; color: var(--ink); background: #FAF8F1;
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; width: 100%;
+}
+.form input:focus, .form textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; background: #fff; }
+.form textarea { resize: vertical; }
+.form .row { display: flex; gap: 10px; }
+.form .row label { flex: 1; }
+.form label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); }
+.form label.check input { width: auto; }
+
+/* The honeypot. Off-screen rather than display:none — some bots skip anything
+   that is not rendered, and the whole point is that they fill it in. */
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+.actions { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+.actions .btn { margin-top: 0; }
+.btn:disabled { opacity: .55; cursor: default; }
+
+/* Confirmation ------------------------------------------------------------- */
+.confirm { max-width: 620px; margin: 40px auto 80px; background: var(--card);
+           border: 1px solid var(--line); border-radius: var(--radius);
+           padding: 30px 32px 34px; box-shadow: var(--shadow); }
+.confirm h1 { margin: 0 0 10px; color: var(--pine); }
+.resnum { margin: 20px 0; padding: 14px 16px; background: #F2F5F2;
+          border: 1px solid var(--line); border-radius: var(--radius); }
+.resnum .k { display: block; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase;
+             color: var(--ink-s); margin-bottom: 4px; }
+.resnum strong { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.25rem;
+                 letter-spacing: .04em; }
+
+/* Version marker. Quiet on purpose — it is for you, not for a guest, but a
+   guest seeing it costs nothing and hiding it would mean it is only visible
+   to somebody who already knows to look. */
+.site-head .ver { margin-left: auto; color: #A9BEB2; font-size: .72rem;
+                  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                  letter-spacing: .04em; }

@@ -216,7 +216,7 @@ describe("the camper page", () => {
         { addon_id: "a2", unit_id: LISTING.unit_id, name: "Generator", price: 45, daily: true, position: 2 },
         { addon_id: "a1", unit_id: LISTING.unit_id, name: "Linen package", price: 30, required: true, position: 9 },
       ],
-      public_listing_amenities: [{ unit_id: LISTING.unit_id, name: "Air conditioning", sort_order: 0 }],
+      public_listing_amenities: [{ unit_id: LISTING.unit_id, amenity_group: "Comfort", amenity_name: "Air conditioning" }],
     };
     const { html } = await renderAsync(camperPage("mt1yujz87zxzve"));
     const h = html();
@@ -336,7 +336,7 @@ describe("hostile data — every field as every wrong type", () => {
       public_listings: [LISTING],
       public_listing_photos: [null, undefined, {}, { storage_path: 42 }, { storage_path: { a: 1 } }],
       public_listing_addons: [null, {}, { name: {} }, { name: "Real", price: "not a number" }],
-      public_listing_amenities: [null, {}, { name: ["array"] }],
+      public_listing_amenities: [null, {}, { amenity_name: ["array"] }, { amenity_name: "Real amenity", amenity_group: {} }],
     };
     const { html } = await renderAsync(camperPage(LISTING.unit_id));
     expect(html()).toContain("Titan");

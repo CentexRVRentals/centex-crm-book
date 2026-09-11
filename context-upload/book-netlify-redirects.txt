@@ -1,0 +1,5 @@
+# Netlify: every path serves index.html so React Router can handle it.
+# Without this, opening /camper/mt1yujz87zxzve directly — or refreshing on it,
+# or following a link from Google — returns Netlify's 404 rather than the app.
+# A client-side router only works on the second navigation without this line.
+/*  /index.html  200

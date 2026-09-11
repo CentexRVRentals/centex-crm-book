@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Version** | `b0.9.0` — `package.json`, injected into the header at build. **Shown top-right on every page**, with the build time on hover. |
+| **Version** | `b0.8.0` — `package.json`, injected into the header at build. **Shown top-right on every page**, with the build time on hover. |
 | **Repo** | `C:\dev\centex-crm-book` |
 | **Deployed** | https://centex-crm-book.netlify.app/ — **reviewable, linked from nowhere** until swap-over |
 | **Stack** | Vite + React (JS, not TS), plain CSS, React Router. No Tailwind. |

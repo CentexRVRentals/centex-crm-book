@@ -132,6 +132,85 @@ describe("nothing about the tenant is hardcoded", () => {
   });
 });
 
+// ============================================================================
+// b0.7 — THE GUARD THAT WOULD HAVE CAUGHT THE AMENITIES BUG
+// ============================================================================
+// public_listing_amenities selects `amenity_group` and `amenity_name`. The
+// contract said `name`, `category` and `sort_order` — all three guessed,
+// because the table was empty and no row had ever come back. The site read
+// `r.name`, got undefined, filtered every amenity out, and the panel silently
+// never rendered.
+//
+// Three things had to line up for that to ship, and each is now checked:
+//
+//   1. the contract named columns the view does not have — only `npm run
+//      contract` can catch that, and it did, the moment data existed
+//   2. everything but unit_id was marked OPTIONAL, so the check reported `ok`
+//      with a warning rather than failing. A warning is what gets scrolled past
+//   3. **the test fixtures used the guessed names too**, so the suite was
+//      green against a shape that does not exist anywhere
+//
+// The third is the one this file can do something about. A fixture is a claim
+// about the world, and a fixture nobody checks against the contract is a
+// claim that agrees with itself.
+describe("fixtures and reads agree with the contract", () => {
+  const KNOWN = new Map(Object.entries(VIEWS).map(([v, s]) => [v, new Set([...s.required, ...s.optional])]));
+
+  it("CRITICAL: every column the data layer reads is in the contract", () => {
+    // listings.js reads rows as `r?.column_name`. Any snake_case property it
+    // reads must be a column the contract knows about — otherwise it is a
+    // guess, and a guess that returns undefined filters silently.
+    const src = fs.readFileSync(path.join(SRC, "lib", "listings.js"), "utf8");
+    const everyKnown = new Set([...KNOWN.values()].flatMap((s) => [...s]));
+    const read = [...src.matchAll(/\br\??\.([a-z][a-z0-9]*_[a-z0-9_]+)/g)].map((m) => m[1]);
+    expect(read.length, "no snake_case reads found — has the data layer moved?").toBeGreaterThan(5);
+    const unknown = [...new Set(read)].filter((c) => !everyKnown.has(c));
+    expect(
+      unknown,
+      `listings.js reads these, and the contract does not list them: ${unknown.join(", ")}. ` +
+      "Either add them to contract.js and run `npm run contract`, or they are a guess."
+    ).toEqual([]);
+  });
+
+  it("CRITICAL: every column in a test fixture is in the contract", () => {
+    // The fixtures in browse.test.jsx are built from what the views return.
+    // When they were built from GUESSES, the suite was green against a shape
+    // that does not exist — which is how the amenities bug reached production
+    // with 81 tests passing.
+    const fixtures = fs.readFileSync(path.join(SRC, "browse.test.jsx"), "utf8");
+    const everyKnown = new Set([...KNOWN.values()].flatMap((s) => [...s]));
+    // Object keys that look like database columns, inside the fixture file.
+    const keys = [...fixtures.matchAll(/(?:^|[{,\s])([a-z][a-z0-9]*_[a-z0-9_]+):/gm)].map((m) => m[1]);
+    expect(keys.length, "no fixture columns found").toBeGreaterThan(10);
+    // The fixture file also uses the VIEW names as object keys (the mock's
+    // table map), and those are not columns.
+    const viewNames = new Set(Object.keys(VIEWS));
+    const unknown = [...new Set(keys)].filter((c) => !everyKnown.has(c) && !viewNames.has(c));
+    expect(
+      unknown,
+      `browse.test.jsx uses these column names, and the contract does not list them: ${unknown.join(", ")}. ` +
+      "A fixture built from a guess makes the suite agree with itself."
+    ).toEqual([]);
+  });
+
+  it("CRITICAL: a view whose only required column is unit_id is suspicious", () => {
+    // The classification failure. `required` means "what this site cannot
+    // render without" — and for every view here that is more than the id.
+    // Marking everything else optional out of caution is what turned a
+    // contract FAILURE into a warning nobody read.
+    const lazy = Object.entries(VIEWS)
+      .filter(([, spec]) => spec.required.length === 1 && spec.required[0] === "unit_id")
+      // busy_dates is the genuine exception: its other two columns are
+      // required and named, so it never reaches here.
+      .map(([v]) => v);
+    expect(
+      lazy,
+      `these views require only unit_id: ${lazy.join(", ")}. ` +
+      "If the site cannot render without a column, it is required — see the amenities bug."
+    ).toEqual([]);
+  });
+});
+
 describe("the contract itself is well formed", () => {
   it("CRITICAL: every view declares what it is for and what it needs", () => {
     for (const [name, spec] of Object.entries(VIEWS)) {

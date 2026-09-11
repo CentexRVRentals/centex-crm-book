@@ -76,43 +76,61 @@ describe("both pages set their own metadata", () => {
 });
 
 // ============================================================================
-// SWAP-OVER. DELETE THIS BLOCK WHEN THE SITE GOES LIVE.
+// b0.8 — THE SITE IS LIVE. The block that used to be here asserted the
+// opposite, and said to delete it at swap-over. This is what replaced it.
 // ============================================================================
-describe("the site is still hidden from search — DELETE AT SWAP-OVER", () => {
-  it("CRITICAL: index.html still says noindex", () => {
-    // Correct today: the site is reviewable and linked from nowhere. A
-    // half-built site in Google is much harder to undo than to prevent.
-    //
-    // AT SWAP-OVER: remove the robots meta tag from index.html, and delete
-    // this case. If this fails, either you are launching — in which case
-    // delete it — or somebody removed the tag by accident, which is the other
-    // reason this exists.
+// Keeping a pair of tests rather than deleting them, because the risk did not
+// go away — it inverted. Before launch the danger was shipping while hidden;
+// now it is somebody reintroducing a noindex, or the two files drifting apart.
+//
+// The third case is the one that matters either way: index.html and robots.txt
+// must AGREE. A meta tag saying noindex and a robots.txt saying Allow fail
+// silently, and which one wins depends on the crawler.
+describe("the site is public, and says so consistently", () => {
+  it("CRITICAL: index.html does NOT say noindex", () => {
     expect(
       read("index.html"),
-      "index.html no longer says noindex. Launching? Delete this test AND the robots.txt one below."
-    ).toMatch(/name="robots"\s+content="noindex/);
+      "index.html has a noindex robots tag. If that is deliberate, change robots.txt to match."
+    ).not.toMatch(/name="robots"[^>]*content="[^"]*noindex/);
   });
 
-  it("CRITICAL: robots.txt still disallows everything", () => {
-    // Both, or neither. A meta tag and a robots.txt that disagree fail
-    // silently — one says hide, the other says index, and which wins depends
-    // on the crawler.
-    expect(
-      read("public/robots.txt"),
-      "robots.txt no longer disallows. Launching? Delete this test AND the noindex one above."
-    ).toMatch(/^Disallow:\s*\/$/m);
+  it("CRITICAL: robots.txt allows crawling and points at the sitemap", () => {
+    const robots = read("public/robots.txt");
+    expect(robots, "robots.txt still disallows everything").not.toMatch(/^Disallow:\s*\/$/m);
+    expect(robots).toMatch(/^Allow:\s*\/$/m);
+    // A sitemap nobody is told about is a sitemap nobody reads.
+    expect(robots, "robots.txt does not point at the sitemap").toMatch(/^Sitemap:\s*https?:\/\//m);
   });
 
-  it("CRITICAL: the two agree with each other", () => {
-    // The case that catches a half-done swap-over: one changed, the other
-    // forgotten. That state is worse than either, because the site looks
-    // launched and behaves hidden.
-    const hidden = /name="robots"\s+content="noindex/.test(read("index.html"));
+  it("CRITICAL: the two files agree with each other", () => {
+    // The case that catches a half-done change in EITHER direction. That state
+    // is worse than either consistent one, because the site looks like one
+    // thing and behaves like the other.
+    const hidden = /name="robots"[^>]*content="[^"]*noindex/.test(read("index.html"));
     const disallowed = /^Disallow:\s*\/$/m.test(read("public/robots.txt"));
     expect(
       hidden,
       hidden === disallowed ? "" : "index.html and robots.txt disagree about whether this site is public. Change both or neither."
     ).toBe(disallowed);
+  });
+
+  it("CRITICAL: the sitemap is generated, not written by hand", () => {
+    // A hand-written list of eleven campers goes wrong the first time one is
+    // retired, and nothing would ever say so.
+    const pkg = JSON.parse(read("package.json"));
+    expect(pkg.scripts.build, "the build does not generate a sitemap").toMatch(/sitemap/);
+    expect(read("scripts/sitemap.mjs")).toMatch(/from\("public_listings"\)/);
+  });
+
+  it("CRITICAL: a sitemap failure does not fail the build", () => {
+    // A thin sitemap costs a little search visibility for a day. A failed
+    // build costs the whole deploy, including whatever fix was in it.
+    const src = read("scripts/sitemap.mjs");
+    expect(src).toMatch(/catch \(err\)/);
+    // Every exit in that script is a zero.
+    const exits = [...src.matchAll(/process\.exit\((\d+)\)/g)].map((m) => m[1]);
+    expect(exits.length).toBeGreaterThan(0);
+    expect(exits.every((c) => c === "0"), `sitemap.mjs exits non-zero somewhere: ${exits.join(", ")}`).toBe(true);
   });
 });
 
