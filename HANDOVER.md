@@ -10,7 +10,7 @@
 | **Contract** | `npm run contract` — **required before every push.** Needs the network. |
 
 **Versions are `bN.N` and belong to this repo alone.** The CRM is on its own
-line at `3.89`. Calling a release here "v3.90" would mean that one day
+line at `4.03`. Calling a release here "v3.90" would mean that one day
 `App.jsx` v3.90 and a guest site v3.90 exist and have nothing to do with each
 other.
 
@@ -153,8 +153,20 @@ authenticated app.
 `auto_accept_days` is enforced later, once the request path has seen real
 traffic.
 
-**No payments in phase 1.** Phase 2. The refund columns exist in the CRM and
-nothing writes them yet.
+**No payments in phase 1 — and phase 2 has started.** Stripe is live in the
+CRM in TEST MODE as of v4.04: a deposit link is created when the office
+approves a held booking, texted to the guest, and a webhook marks the row paid.
+This repo's only part in it is `/paid/:reservationNum` (b0.9), where Stripe
+returns the guest. **Nothing on the browse or request path has changed** — a
+guest still requests, and the office still approves.
+
+The line that used to sit here said "the refund columns exist in the CRM and
+nothing writes them yet." **That was wrong when written.** `bookings.refund_*`
+has data — two cancellations, both refunded outside the app — and `App.jsx` has
+written those columns through `BOOKING_COLUMN_MAP` the whole time. It matters
+here because it is the reason the CRM treats `bookings.refund_*` as canonical
+for refunds and the `payments` table as the Stripe subset only: OTA and cash
+refunds never touch that Stripe account and never will.
 
 **No guest accounts.** Name, email, phone, dates, pickup or delivery. A guest
 portal needs payments first.
@@ -169,7 +181,8 @@ is carried across so it reads as the same company.
 
 ## 6. Open
 
-**The booking rules are going to be an npm package** (planned for b0.3).
+**The booking rules are going to be an npm package** (was planned for b0.3;
+b0.3 shipped `npm run conformance` instead and this has not been revisited).
 `overlapsBusy`, `nightsBetween` and the minimum-nights rule exist in the CRM's
 `_shared/booking-request.ts`, in two copies. This site needs them to grey out
 dates before a guest submits.
@@ -194,6 +207,7 @@ handles it; the gallery will be empty until photos are uploaded in the CRM.
 
 | | |
 |---|---|
+| **b0.9** | **`/paid/:reservationNum` — where Stripe returns a guest after checkout.** **It looks NOTHING up, and that is the release.** The obvious version reads the payment row and reports its status. The webhook is ASYNC: Stripe redirects the browser the instant payment succeeds and delivers `checkout.session.completed` separately over its own connection, and the browser usually wins that race — so a page reading the row would tell a guest who has just paid that their payment is pending, which is the one thing it must never say. It would also need a SIXTH anon view, keyed on a string shaped `WEB-260911-PAV7` — roughly a million combinations, which is not a secret but a speed bump, and publishing who paid what behind a speed bump for a page that does not need it. Stripe only redirects to `success_url` AFTER the payment succeeded, so the redirect itself is the evidence; the page says what that supports and stops. **`?cancelled=1` is the same route:** the CRM set `cancel_url` to the same URL as `success_url`, so a guest who backed out of checkout landed on a page thanking them for paying (fixed CRM-side in v4.04). One route rather than two, because the guest needs the same things either way — their reference, a way back, and no claim that is not true — and the cancelled wording is deliberately not phrased as an error, because backing out is a normal thing to do and the link still works. **The contract is untouched: still five views and one function.** |
 | **b0.8** | **The site is public.** `noindex` gone from index.html and `robots.txt` flipped to Allow — both together, because a meta tag and a robots.txt that disagree fail silently and which one wins depends on the crawler. The three tests that asserted the site was hidden are now three that assert it is public, plus one that checks the two files AGREE in either direction. A sitemap is GENERATED from `public_listings` at build, not written by hand: a hand-written list of eleven campers goes wrong the first time one is retired and nothing would say so. **It never fails the build** — a thin sitemap costs a day of search visibility, a failed build costs the whole deploy. Two bugs found by running it: the generator ran AFTER vite, so the file was written to public/ and never copied into dist/ — the build passed and shipped no sitemap at all; now guarded. ⚠ **Nothing notifies you of a request.** A hold lapses at the first Central midnight 24h+ after it is placed, so a request goes stale in 25-48 hours, silently. |
 | **b0.7** | **The amenities panel never rendered, and 81 passing tests agreed with it.** `public_listing_amenities` selects `amenity_group` and `amenity_name`; the contract said `name`, `category` and `sort_order` — all three GUESSED, because the table was empty and no row had ever come back. The site read `r.name`, got undefined, filtered every amenity out, and the panel silently rendered nothing. **Three things had to line up:** the guessed columns, marking everything but `unit_id` optional so the contract check said `ok` with a warning instead of failing, and test fixtures built from the same guesses so the suite agreed with itself. All three now guarded — every column the data layer reads and every column in a fixture must be in the contract, and a view requiring only `unit_id` fails. Amenities render grouped. Add-ons verified for the first time, 11 columns, exactly as contracted. |
 | **b0.6** | **Swap-over prep.** The hostile-data matrix went from 396 renders per page to 83 by corrupting EVERY column at once per type rather than one at a time — both faster and harsher, with a bisect that names the guilty column only when something fails. 16.3s to about 5s on the machine that matters, against a 30s timeout it was at 54% of. Per-page titles, descriptions and Open Graph tags, so a camper link pasted into a text message carries a photo.  pins line endings. A real 404 that offers the way out. **And three tests that assert the site is STILL HIDDEN** —  and  — which must be deleted deliberately at swap-over, because forgetting them is silent and costs weeks of ranking. |
