@@ -29,6 +29,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { readDotEnv, siteOrigin, originMismatches } from "./site-origin.mjs";
 
 const DIST = path.join(process.cwd(), "dist", "assets");
 
@@ -102,5 +103,40 @@ if (!fs.existsSync(sitemap)) {
 }
 const urls = (fs.readFileSync(sitemap, "utf8").match(/<loc>/g) || []).length;
 
+// ----------------------------------------------------------------------------
+// b0.10 — EVERYTHING THAT NAMES THE ORIGIN NAMES THE SAME ONE.
+// ----------------------------------------------------------------------------
+// index.html's canonical and og:url (stamped by vite.config.js), robots.txt's
+// Sitemap line and every <loc> in the sitemap (both written by sitemap.mjs)
+// are compared against the origin derived from the SAME inputs. This is the
+// one check here that is about consistency rather than presence: a canonical
+// pointing at yesterday's hostname is a build that looks fine, ships, and
+// sends every text-message preview to the wrong domain.
+//
+// It fails the build on purpose. The sitemap script never fails a build
+// because a THIN sitemap is a small cost; a build whose parts disagree about
+// where the site lives is a broken pipeline, not a thin one.
+const origin = siteOrigin(readDotEnv());
+const problems = originMismatches({
+  origin,
+  indexHtml: fs.readFileSync(path.join(process.cwd(), "dist", "index.html"), "utf8"),
+  robots: fs.existsSync(path.join(process.cwd(), "dist", "robots.txt"))
+    ? fs.readFileSync(path.join(process.cwd(), "dist", "robots.txt"), "utf8")
+    : "",
+  sitemap: fs.readFileSync(sitemap, "utf8"),
+});
+if (problems.length) {
+  console.log(`  ${red("The build disagrees with itself about the site's origin.")}\n`);
+  for (const p of problems) console.log(`    ${red("×")} ${p}`);
+  console.log(`
+  The origin is decided once, in scripts/site-origin.mjs: VITE_SITE_URL, else
+  Netlify's URL variable, else localhost. vite.config.js stamps it into
+  index.html and sitemap.mjs writes robots.txt and sitemap.xml from it. If
+  these disagree, one of those three stopped using it.
+`);
+  process.exit(1);
+}
+
 console.log(`  ${green("Bundle contains the app")} — ${Math.round(bundle.length / 1024)} kB, version ${pkg.version}`);
+console.log(`  ${green("Origin agrees everywhere")} — ${origin}`);
 console.log(`  ${urls > 1 ? green(`Sitemap: ${urls} URLs`) : red(`Sitemap: ${urls} URL — campers missing, see above`)}\n`);

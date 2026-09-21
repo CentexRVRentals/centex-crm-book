@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Camper &amp; Travel Trailer Rentals in Kyle, TX | Centex RV Rentals</title>
     <meta name="description" content="Travel trailer and RV rentals in Kyle, Texas. Browse the fleet, check real availability, and request your dates. Pick up from us or have it delivered." />
-    <link rel="canonical" href="https://centex-crm-book.netlify.app/" />
+    <link rel="canonical" href="__SITE_ORIGIN__/" />
+
+    <!-- b0.10 — THE ORIGIN IS STAMPED IN AT BUILD. The placeholder in the
+         canonical above and in og:url below is replaced by vite.config.js from
+         scripts/site-origin.mjs (VITE_SITE_URL, else Netlify's URL, else
+         localhost). Writing a hostname here is how a site keeps pointing at
+         yesterday's domain; check-bundle refuses a build where the
+         placeholder survived. -->
 
     <!-- b0.8 — INDEXABLE. The noindex that lived here through b0.1-b0.7 is
          gone, and public/robots.txt now allows crawling. They were changed
@@ -21,7 +28,7 @@
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Camper &amp; Travel Trailer Rentals in Kyle, TX" />
     <meta property="og:description" content="Browse the fleet, check real availability, and request your dates." />
-    <meta property="og:url" content="https://centex-crm-book.netlify.app/" />
+    <meta property="og:url" content="__SITE_ORIGIN__/" />
     <meta name="twitter:card" content="summary" />
 
     <meta name="theme-color" content="#3D6B54" />

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 //
-// Writes public/sitemap.xml from the live fleet. Runs as part of `npm run build`.
+// Writes public/sitemap.xml from the live fleet — and public/robots.txt, whose
+// Sitemap line names the same origin. Runs as part of `npm run build`.
 //
 // ============================================================================
 // GENERATED, NOT WRITTEN
@@ -29,21 +30,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
+import { readDotEnv, siteOrigin, robotsTxt } from "./site-origin.mjs";
 
-const SITE = process.env.VITE_SITE_URL || "https://centex-crm-book.netlify.app";
+const env = readDotEnv();
 
-function loadEnv() {
-  const out = { ...process.env };
-  const file = path.join(process.cwd(), ".env");
-  if (!fs.existsSync(file)) return out;
-  for (const line of fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "").split(/\r?\n/)) {
-    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
-    if (m && !out[m[1]]) out[m[1]] = m[2].replace(/^["']|["']$/g, "");
-  }
-  return out;
-}
-
-const env = loadEnv();
+// b0.10 \u2014 THE ORIGIN COMES FROM ONE PLACE. VITE_SITE_URL, else Netlify's own
+// URL, else localhost \u2014 see site-origin.mjs. The netlify.app fallback that
+// used to sit here is gone: a build that cannot find its origin says
+// localhost, which is visibly wrong, rather than a hostname that is wrong
+// quietly.
+const SITE = siteOrigin(env);
 const today = new Date().toISOString().slice(0, 10);
 
 function write(urls, note) {
@@ -60,7 +56,11 @@ function write(urls, note) {
     `\n</urlset>\n`;
   fs.mkdirSync(path.join(process.cwd(), "public"), { recursive: true });
   fs.writeFileSync(path.join(process.cwd(), "public", "sitemap.xml"), xml);
-  console.log(`  sitemap.xml — ${urls.length} URL(s)${note ? ` (${note})` : ""}`);
+  // robots.txt is generated here because its Sitemap line is an absolute URL,
+  // and an absolute URL is the origin written down. Same origin, same moment.
+  fs.writeFileSync(path.join(process.cwd(), "public", "robots.txt"), robotsTxt(SITE));
+  console.log(`  sitemap.xml — ${urls.length} URL(s) at ${SITE}${note ? ` (${note})` : ""}`);
+  console.log(`  robots.txt  — Sitemap: ${SITE}/sitemap.xml`);
 }
 
 // The homepage is always in it, whatever else happens.

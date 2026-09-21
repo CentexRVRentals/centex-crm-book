@@ -1,5 +1,13 @@
-﻿node_modules/
+node_modules/
 dist/
 .env
 .env.local
 .DS_Store
+
+# Generated at build by scripts/sitemap.mjs from the origin in
+# scripts/site-origin.mjs (b0.10). Netlify never reads a committed copy.
+public/robots.txt
+public/sitemap.xml
+
+# Supabase CLI scratch — per-machine state, not source.
+supabase/.temp/

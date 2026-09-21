@@ -21,6 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { camperMeta } from "./lib/meta.js";
+import { robotsTxt } from "../scripts/site-origin.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
@@ -86,6 +87,11 @@ describe("both pages set their own metadata", () => {
 // The third case is the one that matters either way: index.html and robots.txt
 // must AGREE. A meta tag saying noindex and a robots.txt saying Allow fail
 // silently, and which one wins depends on the crawler.
+//
+// b0.10 — robots.txt is GENERATED at build from the template in
+// scripts/site-origin.mjs, because its Sitemap line is an absolute URL and an
+// absolute URL is the origin written down. So these read the template, not
+// public/robots.txt, which is no longer in git. Same assertions, same policy.
 describe("the site is public, and says so consistently", () => {
   it("CRITICAL: index.html does NOT say noindex", () => {
     expect(
@@ -95,7 +101,7 @@ describe("the site is public, and says so consistently", () => {
   });
 
   it("CRITICAL: robots.txt allows crawling and points at the sitemap", () => {
-    const robots = read("public/robots.txt");
+    const robots = robotsTxt("https://book.example.com");
     expect(robots, "robots.txt still disallows everything").not.toMatch(/^Disallow:\s*\/$/m);
     expect(robots).toMatch(/^Allow:\s*\/$/m);
     // A sitemap nobody is told about is a sitemap nobody reads.
@@ -107,7 +113,7 @@ describe("the site is public, and says so consistently", () => {
     // is worse than either consistent one, because the site looks like one
     // thing and behaves like the other.
     const hidden = /name="robots"[^>]*content="[^"]*noindex/.test(read("index.html"));
-    const disallowed = /^Disallow:\s*\/$/m.test(read("public/robots.txt"));
+    const disallowed = /^Disallow:\s*\/$/m.test(robotsTxt("https://book.example.com"));
     expect(
       hidden,
       hidden === disallowed ? "" : "index.html and robots.txt disagree about whether this site is public. Change both or neither."

@@ -2,17 +2,17 @@
 
 | | |
 |---|---|
-| **Version** | `b0.9.0` — `package.json`, injected into the header at build. **Shown top-right on every page**, with the build time on hover. |
+| **Version** | `b0.10.0` — `package.json`, injected into the header at build. **Shown top-right on every page**, with the build time on hover. |
 | **Repo** | `C:\dev\centex-crm-book` |
-| **Deployed** | https://centex-crm-book.netlify.app/ — **reviewable, linked from nowhere** until swap-over |
+| **Deployed** | https://book.centexrvrentals.com/ — **public since b0.8, linked from centexrvrentals.com at swap-over (b0.10)**. The netlify.app address redirects here once the domain is primary in Netlify. The origin is never written in source: `scripts/site-origin.mjs` decides it at build |
 | **Stack** | Vite + React (JS, not TS), plain CSS, React Router. No Tailwind. |
 | **Gates** | `npm run preship` — ESLint then vitest. Offline, fast. |
 | **Contract** | `npm run contract` — **required before every push.** Needs the network. |
 
 **Versions are `bN.N` and belong to this repo alone.** The CRM is on its own
-line at `4.03`. Calling a release here "v3.90" would mean that one day
-`App.jsx` v3.90 and a guest site v3.90 exist and have nothing to do with each
-other.
+line (v5.91 when b0.10 shipped). Calling a release here "v3.90" would mean
+that one day `App.jsx` v3.90 and a guest site v3.90 exist and have nothing to
+do with each other.
 
 ---
 
@@ -128,6 +128,14 @@ All offline, all in preship:
 - **The honeypot field stays in the request contract.** If this site stops
   sending `company`, the form loses its cheapest defence and nothing else
   would notice.
+- **Nothing in the source names the site's origin** (`src/site-origin.test.js`,
+  b0.10). `scripts/site-origin.mjs` decides it once — `VITE_SITE_URL`, else
+  Netlify's `URL`, else localhost — and `vite.config.js`, `sitemap.mjs` and
+  `check-bundle.mjs` all derive from it. `index.html` carries a placeholder
+  in its canonical and `og:url`; `robots.txt` and `sitemap.xml` are generated
+  and not in git. **`check-bundle` fails a build whose canonical, `og:url`,
+  `Sitemap:` line and `<loc>` entries do not all agree** — consistency, not a
+  particular hostname, so a local build passes on localhost.
 
 ### jsdom is the global test environment here
 
@@ -201,12 +209,26 @@ got ticked. Worth a look before swap-over.
 **No camper has listing photos yet**, as far as anyone has checked. The grid
 handles it; the gallery will be empty until photos are uploaded in the CRM.
 
+**Swap-over runbook (b0.10).** In order: (1) Settings → Payments → Enabled is
+OFF in the CRM until payments go live, or an approved real guest gets a
+test-mode link; (2) GoDaddy DNS: CNAME `book` → `centex-crm-book.netlify.app`;
+(3) Netlify → Domain management → add `book.centexrvrentals.com` and make it
+**primary** — Netlify's `URL` build variable becomes the custom domain at that
+point, which is what `site-origin.mjs` reads, so `VITE_SITE_URL` is an override
+and not a requirement; (4) trigger a deploy — the origin is baked in at BUILD,
+so changing the primary domain does nothing to the live bundle until the next
+build; (5) confirm the build log says `sitemap.xml — N URL(s) at
+https://book.centexrvrentals.com` and `Origin agrees everywhere`; (6) the
+"Book now" button on centexrvrentals.com; (7) `BOOK_SITE_URL` in the CRM's
+Edge Function secrets → the same origin, so pay links return guests here.
+
 ---
 
 ## 7. Version history
 
 | | |
 |---|---|
+| **b0.10** | **The origin is decided once, and swap-over is a domain change rather than a code change.** Through b0.9 `centex-crm-book.netlify.app` was written in `index.html` (canonical and `og:url` — the two tags a text-message preview reads, and previews do not run JavaScript), in `robots.txt`'s `Sitemap:` line, as a fallback in `sitemap.mjs`, and in a committed `sitemap.xml` that Netlify never used because the generator overwrites it every build. All four would have gone on naming the old host after the site got its own domain, silently. Now `scripts/site-origin.mjs` derives the origin — `VITE_SITE_URL`, else Netlify's own `URL` build variable (which becomes the custom domain the moment it is made primary), else localhost, and **never the old netlify.app fallback**: a build that cannot find its origin says localhost, which is visibly wrong in a screenshot, rather than a hostname that is wrong quietly. `vite.config.js` stamps it into `index.html`'s placeholder; `sitemap.mjs` writes `sitemap.xml` AND `robots.txt` from it (robots.txt is generated because its Sitemap line is an absolute URL); `check-bundle.mjs` **fails the build** if canonical, `og:url`, the `Sitemap:` line and every `<loc>` do not agree — that is a broken pipeline, not the thin sitemap the b0.8 rule protects, so failing is right. `robots.txt`, `sitemap.xml` and `supabase/.temp/` leave git. `src/site-origin.test.js` drives every mismatch the checker must catch (a negative test that does not fail proves nothing) and sweeps every shipped or build file for the old host. `meta.test.jsx` reads the robots template instead of the file. The contract is untouched: five views, one function. |
 | **b0.9** | **`/paid/:reservationNum` — where Stripe returns a guest after checkout.** **It looks NOTHING up, and that is the release.** The obvious version reads the payment row and reports its status. The webhook is ASYNC: Stripe redirects the browser the instant payment succeeds and delivers `checkout.session.completed` separately over its own connection, and the browser usually wins that race — so a page reading the row would tell a guest who has just paid that their payment is pending, which is the one thing it must never say. It would also need a SIXTH anon view, keyed on a string shaped `WEB-260911-PAV7` — roughly a million combinations, which is not a secret but a speed bump, and publishing who paid what behind a speed bump for a page that does not need it. Stripe only redirects to `success_url` AFTER the payment succeeded, so the redirect itself is the evidence; the page says what that supports and stops. **`?cancelled=1` is the same route:** the CRM set `cancel_url` to the same URL as `success_url`, so a guest who backed out of checkout landed on a page thanking them for paying (fixed CRM-side in v4.04). One route rather than two, because the guest needs the same things either way — their reference, a way back, and no claim that is not true — and the cancelled wording is deliberately not phrased as an error, because backing out is a normal thing to do and the link still works. **The contract is untouched: still five views and one function.** |
 | **b0.8** | **The site is public.** `noindex` gone from index.html and `robots.txt` flipped to Allow — both together, because a meta tag and a robots.txt that disagree fail silently and which one wins depends on the crawler. The three tests that asserted the site was hidden are now three that assert it is public, plus one that checks the two files AGREE in either direction. A sitemap is GENERATED from `public_listings` at build, not written by hand: a hand-written list of eleven campers goes wrong the first time one is retired and nothing would say so. **It never fails the build** — a thin sitemap costs a day of search visibility, a failed build costs the whole deploy. Two bugs found by running it: the generator ran AFTER vite, so the file was written to public/ and never copied into dist/ — the build passed and shipped no sitemap at all; now guarded. ⚠ **Nothing notifies you of a request.** A hold lapses at the first Central midnight 24h+ after it is placed, so a request goes stale in 25-48 hours, silently. |
 | **b0.7** | **The amenities panel never rendered, and 81 passing tests agreed with it.** `public_listing_amenities` selects `amenity_group` and `amenity_name`; the contract said `name`, `category` and `sort_order` — all three GUESSED, because the table was empty and no row had ever come back. The site read `r.name`, got undefined, filtered every amenity out, and the panel silently rendered nothing. **Three things had to line up:** the guessed columns, marking everything but `unit_id` optional so the contract check said `ok` with a warning instead of failing, and test fixtures built from the same guesses so the suite agreed with itself. All three now guarded — every column the data layer reads and every column in a fixture must be in the contract, and a view requiring only `unit_id` fails. Amenities render grouped. Add-ons verified for the first time, 11 columns, exactly as contracted. |
