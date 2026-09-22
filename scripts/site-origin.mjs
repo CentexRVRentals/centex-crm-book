@@ -75,6 +75,44 @@ export function readDotEnv(cwd = process.cwd(), base = process.env) {
   return out;
 }
 
+// b0.11 — WHAT A LIVE PAGE'S STATUS MEANS, IN A SENTENCE.
+//
+// Written because of the swap-over's own bug: on 2026-09-21 the site had been
+// serving 401 to every visitor since it was created. Netlify's team defaults
+// new projects to private, this one was explicitly Private for production, and
+// NOTHING in this repo could see it — b0.8 flipped the robots meta tag and
+// robots.txt, which are the only signals the repo owns, and said "the site is
+// public" in three places while every guest got a Netlify login page.
+//
+// A guard that lives in the repo cannot check a setting that lives above the
+// repo. The only thing that can is a request. So `npm run contract` makes one.
+// 401 AND 403 ARE NOT THE SAME CLAIM, and the first draft of this said they
+// were. Netlify's team protection answers 401 — verified against the live site
+// on 2026-09-21, which redirects to app.netlify.com/edge-access. A 403 is
+// somebody ELSE saying no: a firewall rule, a WAF, or a proxy between you and
+// the site. Writing one confident sentence for both was caught by running this
+// from a sandboxed container, whose egress proxy returns 403 — and the check
+// cheerfully announced that a site I had just loaded in a browser was private.
+// A guard that states the wrong cause with confidence costs more than one that
+// says less.
+export function reachabilityProblem(label, status) {
+  if (status === 200) return null;
+  if (status === 401) {
+    return `${label} answered 401 — THE SITE IS PRIVATE. ` +
+      "Netlify: the project's Visitor access (Project configuration), and the team " +
+      "default above it. A site nobody can open ranks for nothing, takes no bookings, " +
+      "and shows a login page to a guest Stripe just redirected back.";
+  }
+  if (status === 403) {
+    return `${label} answered 403 — something refused the request. Netlify's visitor ` +
+      "access, a firewall or WAF rule, or a proxy between this machine and the site. " +
+      "Open it in a browser: if it loads there, the refusal is local to this machine.";
+  }
+  if (status === 404) return `${label} answered 404 — is the deploy published, and did the build emit this file?`;
+  if (status >= 500) return `${label} answered ${status} — the deploy is serving an error.`;
+  return `${label} answered ${status}, expected 200.`;
+}
+
 // robots.txt is GENERATED from this, because its Sitemap line must be an
 // absolute URL and an absolute URL is an origin written down. The policy
 // lines are the b0.8 ones and change together with the robots meta tag in
@@ -125,4 +163,66 @@ export function originMismatches({ origin, indexHtml, robots, sitemap }) {
   }
 
   return problems;
+}
+
+// The whole live check, as a pure function so preship covers it with the
+// network nowhere in sight. Each page is { status, text } when it was fetched,
+// or { error } when the fetch itself threw.
+//
+// TWO KINDS OF BAD, AND THEY ARE NOT THE SAME KIND. A page that could not be
+// reached at all is almost always the wifi; a page that answered and answered
+// WRONG is the deploy. The caller FAILS on `problems` and only WARNS on
+// `unreachable`, for the same reason this repo keeps the contract check out of
+// preship: a gate that cries about a dropped connection is a gate people learn
+// to ignore.
+export function liveSiteProblems({ origin, root, robots, sitemap }) {
+  const problems = [];
+  const unreachable = [];
+  const pages = { "/": root, "/robots.txt": robots, "/sitemap.xml": sitemap };
+
+  // ONE FAULT, ONE MESSAGE. When every page answers the same non-200 — which
+  // is what a private site, an unpublished deploy or a proxy all look like —
+  // that is one fact about the site, not three about its paths. The first
+  // draft printed the same paragraph three times and buried it.
+  const fetched = Object.entries(pages).filter(([, p]) => p && !p.error);
+  const failed = fetched.filter(([, p]) => p.status !== 200);
+  const oneCause =
+    failed.length > 1 &&
+    failed.length === fetched.length &&
+    new Set(failed.map(([, p]) => p.status)).size === 1;
+
+  for (const [label, page] of Object.entries(pages)) {
+    if (!page || page.error) {
+      unreachable.push(`${label} — ${page?.error || "not fetched"}`);
+      continue;
+    }
+    if (oneCause) continue;
+    const bad = reachabilityProblem(label, page.status);
+    if (bad) problems.push(bad);
+  }
+  if (oneCause) problems.push(reachabilityProblem("the site", failed[0][1].status));
+
+  // Content is only compared for pages that actually arrived with a 200.
+  // Asserting the canonical of a Netlify login page would produce a second,
+  // louder failure about entirely the wrong thing, and bury the first.
+  const ok = (p) => Boolean(p) && !p.error && p.status === 200;
+  const checkable = [root, robots, sitemap].filter(ok);
+  if (checkable.length) {
+    problems.push(
+      ...originMismatches({
+        origin,
+        // A page that did not arrive is passed as its own correct value, so it
+        // contributes no findings of its own — it has already been reported
+        // above as unreachable or wrong-status, and one fault should produce
+        // one message.
+        indexHtml: ok(root)
+          ? root.text
+          : `<link rel="canonical" href="${origin}/" /><meta property="og:url" content="${origin}/" />`,
+        robots: ok(robots) ? robots.text : robotsTxt(origin),
+        sitemap: ok(sitemap) ? sitemap.text : `<loc>${origin}/</loc>`,
+      })
+    );
+  }
+
+  return { problems, unreachable };
 }

@@ -20,8 +20,13 @@
 // and return nothing useful. This checks the SHAPE, which is the thing that
 // breaks silently when someone renames a column three repos away.
 
+// b0.11 — IT ALSO CHECKS THAT THE DEPLOYED SITE IS REACHABLE AND SAYS THE
+// RIGHT ORIGIN. See the third section at the bottom, and liveSiteProblems in
+// site-origin.mjs for why a request is the only thing that can check it.
+
 import { createClient } from "@supabase/supabase-js";
 import { VIEWS, FUNCTIONS, CONTRACT_VERSION } from "../src/lib/contract.js";
+import { liveSiteProblems } from "./site-origin.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -141,6 +146,60 @@ for (const [name, spec] of Object.entries(FUNCTIONS)) {
   } catch (err) {
     console.log(`  ${red("FAIL")}  ${name} — ${err.message}`);
     failures++;
+  }
+}
+
+// ----------------------------------------------------------------------------
+// b0.11 — THE DEPLOYED SITE. Reachable, and naming the right origin.
+// ----------------------------------------------------------------------------
+// The one check in this repo that looks ABOVE the repo. On 2026-09-21 the site
+// had been answering 401 to every visitor since the day it was created — a
+// Netlify visibility setting, invisible to every offline guard, while b0.8's
+// tests correctly asserted that the two files the repo owns said "public".
+//
+// WHAT IT PROVES, AND WHAT IT DOES NOT. It describes PRODUCTION AS IT STANDS
+// RIGHT NOW, not the commit about to be pushed — the deploy being checked is
+// the previous one. That is still the check worth having, because the failure
+// it catches is a setting nobody changed in git at all.
+//
+// CONTRACT_SITE_URL is required rather than defaulted. A default would be the
+// origin written down in a fifth place, which is the exact thing b0.10 removed.
+const siteUrl = String(env.CONTRACT_SITE_URL ?? "").trim().replace(/\/+$/, "");
+if (!siteUrl) {
+  console.log(`\n  ${red("CONTRACT_SITE_URL is not set")} — the deployed site was not checked.`);
+  console.log(`        Add it to .env, e.g.  CONTRACT_SITE_URL=https://book.centexrvrentals.com`);
+  console.log(dim(`        Not defaulted on purpose: a default is the origin written down again.`));
+  failures++;
+} else {
+  const grab = async (p) => {
+    try {
+      const res = await fetch(`${siteUrl}${p}`, { redirect: "follow" });
+      return { status: res.status, text: await res.text() };
+    } catch (err) {
+      return { error: err.message };
+    }
+  };
+  const [root, robotsPage, sitemapPage] = await Promise.all([grab("/"), grab("/robots.txt"), grab("/sitemap.xml")]);
+  const { problems, unreachable } = liveSiteProblems({
+    origin: siteUrl,
+    root,
+    robots: robotsPage,
+    sitemap: sitemapPage,
+  });
+
+  if (problems.length) {
+    console.log(`  ${red("FAIL")}  ${siteUrl}`);
+    for (const p of problems) console.log(`        ${p}`);
+    failures++;
+  } else if (unreachable.length) {
+    // The wifi, almost always. Warn — never fail a delivery over a dropped
+    // connection, for the same reason this whole script is not in preship.
+    console.log(`  ${red("SKIP")}  ${siteUrl} could not be reached — UNCHECKED`);
+    for (const u of unreachable) console.log(`        ${u}`);
+    warnings++;
+  } else {
+    const locs = (sitemapPage.text.match(/<loc>/g) || []).length;
+    console.log(`  ${green("ok")}    ${siteUrl} ${dim(`(public, origin agrees, ${locs} sitemap URLs)`)}`);
   }
 }
 

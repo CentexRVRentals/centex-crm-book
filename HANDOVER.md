@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| **Version** | `b0.10.0` — `package.json`, injected into the header at build. **Shown top-right on every page**, with the build time on hover. |
+| **Version** | `b0.11.0` — `package.json`, injected into the header at build. **Shown top-right on every page**, with the build time on hover. |
 | **Repo** | `C:\dev\centex-crm-book` |
 | **Deployed** | https://book.centexrvrentals.com/ — **public since b0.8, linked from centexrvrentals.com at swap-over (b0.10)**. The netlify.app address redirects here once the domain is primary in Netlify. The origin is never written in source: `scripts/site-origin.mjs` decides it at build |
 | **Stack** | Vite + React (JS, not TS), plain CSS, React Router. No Tailwind. |
 | **Gates** | `npm run preship` — ESLint then vitest. Offline, fast. |
-| **Contract** | `npm run contract` — **required before every push.** Needs the network. |
+| **Contract** | `npm run contract` — **required before every push.** Needs the network, and `CONTRACT_SITE_URL` in `.env`. Checks the five views, the Edge Function, AND (b0.11) that the DEPLOYED SITE is reachable and names the right origin. |
 
 **Versions are `bN.N` and belong to this repo alone.** The CRM is on its own
 line (v5.91 when b0.10 shipped). Calling a release here "v3.90" would mean
@@ -53,6 +53,12 @@ ever wrote.
 
 So the contract is a list a machine checks, and this section is a summary of a
 thing that is already enforced.
+
+**`CONTRACT_SITE_URL` must be in `.env`** for the b0.11 live check, e.g.
+`CONTRACT_SITE_URL=https://book.centexrvrentals.com`. REQUIRED rather than
+defaulted: a default would be the origin written down in a fifth place, the
+exact thing b0.10 removed. Deliberately separate from `VITE_SITE_URL` so that
+checking production cannot change what a local build stamps.
 
 **To add a column:** add it to `contract.js`, run `npm run contract`, and only
 then write the code that reads it. A column that fails the check does not
@@ -136,6 +142,10 @@ All offline, all in preship:
   and not in git. **`check-bundle` fails a build whose canonical, `og:url`,
   `Sitemap:` line and `<loc>` entries do not all agree** — consistency, not a
   particular hostname, so a local build passes on localhost.
+- **And one guard that is NOT offline (b0.11), because it cannot be.**
+  `npm run contract` fetches the deployed site and fails if it is not
+  reachable or does not name the expected origin. It is the only check here
+  that looks ABOVE the repo, and §6 records why it had to exist.
 
 ### jsdom is the global test environment here
 
@@ -208,6 +218,27 @@ got ticked. Worth a look before swap-over.
 
 **No camper has listing photos yet**, as far as anyone has checked. The grid
 handles it; the gallery will be empty until photos are uploaded in the CRM.
+WARNING: the site is public and being crawled NOW, so empty galleries are
+what gets indexed.
+
+**THE SITE WAS NEVER ACTUALLY PUBLIC UNTIL 2026-09-21, AND NOTHING HERE COULD
+HAVE KNOWN.** b0.8 is titled "The site is public." It removed `noindex`,
+flipped `robots.txt` to Allow, and turned three tests around to assert the new
+state. Every one of those was correct about everything this repo controls. But
+Netlify's team -- created Aug 2 -- defaults new projects to **private**, and
+this project was explicitly set to Private for production and previews. Every
+visitor for six weeks got "Sign in with an invited Netlify account"; the Web
+Security panel showed 30 requests in seven days, all of them ours. Found while
+verifying b0.10's swap-over, by fetching the site rather than reading the repo.
+
+**The lesson, and the reason b0.11 exists:** a guard inside the repo cannot
+see a setting outside it, and green tests were never evidence the site was
+reachable -- only that the two files we own said the right thing. The one
+instrument that can answer "can a guest open this" is a request. Fixed by
+setting the project's Visitor access to *Private / **Previews only*** --
+production public, deploy previews still behind team login, which is what we
+want now that every build emits `Allow: /` (a public preview would be
+crawlable duplicate content competing with the real site).
 
 **Swap-over runbook (b0.10).** In order: (1) Settings → Payments → Enabled is
 OFF in the CRM until payments go live, or an approved real guest gets a
@@ -228,6 +259,7 @@ Edge Function secrets → the same origin, so pay links return guests here.
 
 | | |
 |---|---|
+| **b0.11** | **The one guard that looks above the repo.** b0.10 shipped on 09-21 and the swap-over verification found the site had been answering **401 to every visitor since it was created** -- Netlify team protection, a setting one level above anything a test here can read, while b0.8's three tests correctly asserted that the two files this repo owns said "public" (section 6). `npm run contract` now also GETs `/`, `/robots.txt` and `/sitemap.xml` from `CONTRACT_SITE_URL` and fails on a non-200 or an origin that disagrees. **The split that makes it usable: a page that ANSWERED WRONG fails the run; a page that could not be REACHED only warns** -- the same reasoning that keeps this whole script out of preship, because a gate that cries about a dropped connection is a gate people skip. The assertion logic is pure (`liveSiteProblems` in `site-origin.mjs`), so preship covers every branch offline while the fetch stays in the script. **Two faults were found by RUNNING it rather than reading it:** it announced "THE SITE IS PRIVATE" on any 403, and a sandboxed container's egress proxy returns 403 -- so 401 (Netlify's actual signature, verified live) keeps that sentence while 403 now names the alternatives including a local proxy; and three pages answering the same status printed the same paragraph three times, so one cause now prints one line. **A third was found by MUTATION TESTING:** three of the new source guards used whole-file lazy windows and stayed GREEN when the block they described was inverted, because the match ran on and found the token in a later branch -- they use brace-matched blocks now, and all six mutations were re-run red. The contract is untouched: five views, one function. |
 | **b0.10** | **The origin is decided once, and swap-over is a domain change rather than a code change.** Through b0.9 `centex-crm-book.netlify.app` was written in `index.html` (canonical and `og:url` — the two tags a text-message preview reads, and previews do not run JavaScript), in `robots.txt`'s `Sitemap:` line, as a fallback in `sitemap.mjs`, and in a committed `sitemap.xml` that Netlify never used because the generator overwrites it every build. All four would have gone on naming the old host after the site got its own domain, silently. Now `scripts/site-origin.mjs` derives the origin — `VITE_SITE_URL`, else Netlify's own `URL` build variable (which becomes the custom domain the moment it is made primary), else localhost, and **never the old netlify.app fallback**: a build that cannot find its origin says localhost, which is visibly wrong in a screenshot, rather than a hostname that is wrong quietly. `vite.config.js` stamps it into `index.html`'s placeholder; `sitemap.mjs` writes `sitemap.xml` AND `robots.txt` from it (robots.txt is generated because its Sitemap line is an absolute URL); `check-bundle.mjs` **fails the build** if canonical, `og:url`, the `Sitemap:` line and every `<loc>` do not agree — that is a broken pipeline, not the thin sitemap the b0.8 rule protects, so failing is right. `robots.txt`, `sitemap.xml` and `supabase/.temp/` leave git. `src/site-origin.test.js` drives every mismatch the checker must catch (a negative test that does not fail proves nothing) and sweeps every shipped or build file for the old host. `meta.test.jsx` reads the robots template instead of the file. The contract is untouched: five views, one function. |
 | **b0.9** | **`/paid/:reservationNum` — where Stripe returns a guest after checkout.** **It looks NOTHING up, and that is the release.** The obvious version reads the payment row and reports its status. The webhook is ASYNC: Stripe redirects the browser the instant payment succeeds and delivers `checkout.session.completed` separately over its own connection, and the browser usually wins that race — so a page reading the row would tell a guest who has just paid that their payment is pending, which is the one thing it must never say. It would also need a SIXTH anon view, keyed on a string shaped `WEB-260911-PAV7` — roughly a million combinations, which is not a secret but a speed bump, and publishing who paid what behind a speed bump for a page that does not need it. Stripe only redirects to `success_url` AFTER the payment succeeded, so the redirect itself is the evidence; the page says what that supports and stops. **`?cancelled=1` is the same route:** the CRM set `cancel_url` to the same URL as `success_url`, so a guest who backed out of checkout landed on a page thanking them for paying (fixed CRM-side in v4.04). One route rather than two, because the guest needs the same things either way — their reference, a way back, and no claim that is not true — and the cancelled wording is deliberately not phrased as an error, because backing out is a normal thing to do and the link still works. **The contract is untouched: still five views and one function.** |
 | **b0.8** | **The site is public.** `noindex` gone from index.html and `robots.txt` flipped to Allow — both together, because a meta tag and a robots.txt that disagree fail silently and which one wins depends on the crawler. The three tests that asserted the site was hidden are now three that assert it is public, plus one that checks the two files AGREE in either direction. A sitemap is GENERATED from `public_listings` at build, not written by hand: a hand-written list of eleven campers goes wrong the first time one is retired and nothing would say so. **It never fails the build** — a thin sitemap costs a day of search visibility, a failed build costs the whole deploy. Two bugs found by running it: the generator ran AFTER vite, so the file was written to public/ and never copied into dist/ — the build passed and shipped no sitemap at all; now guarded. ⚠ **Nothing notifies you of a request.** A hold lapses at the first Central midnight 24h+ after it is placed, so a request goes stale in 25-48 hours, silently. |

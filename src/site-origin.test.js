@@ -25,6 +25,8 @@ import {
   siteOrigin,
   robotsTxt,
   originMismatches,
+  reachabilityProblem,
+  liveSiteProblems,
 } from "../scripts/site-origin.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -193,5 +195,229 @@ describe("nothing in the source names the origin", () => {
     for (const entry of ["public/robots.txt", "public/sitemap.xml", "supabase/.temp/"]) {
       expect(ignore, `.gitignore does not list ${entry}`).toMatch(new RegExp(`^${entry.replace(/[.\/]/g, "\\$&")}$`, "m"));
     }
+  });
+});
+
+// ============================================================================
+// b0.11 — THE LIVE SITE CHECK
+// ============================================================================
+// The repo's one look ABOVE itself. These cases exist because on 2026-09-21
+// the deployed site had been answering 401 to every visitor since it was
+// created, and every offline guard in this repo was correctly green: b0.8's
+// tests assert what index.html and robots.txt say, and both said "public".
+// The setting that made it private lived in Netlify, where no test can reach.
+//
+// So the guard is a request, and these tests drive the ANSWERS that request
+// can come back with — every one of them, because a negative test that does
+// not fail proves nothing.
+
+describe("reachabilityProblem names what a status means", () => {
+  it("CRITICAL: 200 is the only clean answer", () => {
+    expect(reachabilityProblem("/", 200)).toBe(null);
+  });
+
+  it("CRITICAL: 401 says the site is PRIVATE and where to look", () => {
+    // The exact bug, and its exact signature: Netlify's team protection
+    // answers 401 and redirects to app.netlify.com/edge-access. The message
+    // has to name Netlify's visitor access, because the person reading it will
+    // otherwise go looking in this repo, where the cause provably is not.
+    const msg = reachabilityProblem("/", 401);
+    expect(msg).toMatch(/PRIVATE/);
+    expect(msg).toMatch(/Visitor access/);
+    expect(msg).toMatch(/401/);
+  });
+
+  it("CRITICAL: 403 claims LESS — it is not proof of a private site", () => {
+    // 401 is Netlify saying "sign in". 403 is somebody else saying no, and
+    // that somebody is often local: a container's egress proxy returns 403,
+    // which is how the first draft came to announce that a site loading
+    // perfectly well in a browser was private.
+    const msg = reachabilityProblem("/", 403);
+    expect(msg).toMatch(/403/);
+    expect(msg).not.toMatch(/IS PRIVATE/);
+    expect(msg).toMatch(/firewall|WAF|proxy/);
+  });
+
+  it("404 asks whether the deploy published, 5xx says the deploy is erroring", () => {
+    expect(reachabilityProblem("/sitemap.xml", 404)).toMatch(/published/);
+    expect(reachabilityProblem("/", 500)).toMatch(/serving an error/);
+    expect(reachabilityProblem("/", 503)).toMatch(/serving an error/);
+  });
+
+  it("an unexpected status is still reported rather than swallowed", () => {
+    expect(reachabilityProblem("/", 302)).toMatch(/302, expected 200/);
+  });
+});
+
+const LIVE = "https://book.example.com";
+const livePages = () => ({
+  origin: LIVE,
+  root: {
+    status: 200,
+    text: `<link rel="canonical" href="${LIVE}/" /><meta property="og:url" content="${LIVE}/" />`,
+  },
+  robots: { status: 200, text: robotsTxt(LIVE) },
+  sitemap: { status: 200, text: `<urlset><url><loc>${LIVE}/</loc></url><url><loc>${LIVE}/camper/u1</loc></url></urlset>` },
+});
+
+describe("liveSiteProblems separates a broken deploy from a dropped connection", () => {
+  it("CRITICAL: a healthy public deploy reports nothing at all", () => {
+    expect(liveSiteProblems(livePages())).toEqual({ problems: [], unreachable: [] });
+  });
+
+  it("CRITICAL: a private site is a PROBLEM, not a warning", () => {
+    // This is the whole point of the release. If it landed in `unreachable`
+    // the contract check would warn and pass, and the site would stay private.
+    const pages = livePages();
+    pages.root = { status: 401, text: "Sign in with an invited Netlify account" };
+    const { problems, unreachable } = liveSiteProblems(pages);
+    expect(unreachable).toEqual([]);
+    expect(problems.some((p) => /PRIVATE/.test(p))).toBe(true);
+  });
+
+  it("CRITICAL: a private site produces ONE finding, not a pile of origin noise", () => {
+    // A Netlify login page has no canonical, no og:url and no Sitemap line. If
+    // its body were fed to originMismatches the real cause would be buried
+    // under four confident, irrelevant failures about the wrong document. And
+    // three pages answering 401 is ONE fact about the site, not three.
+    const login = { status: 401, text: "Sign in with an invited Netlify account" };
+    const { problems } = liveSiteProblems({ origin: LIVE, root: login, robots: login, sitemap: login });
+    expect(problems.length).toBe(1);
+    expect(problems[0]).toMatch(/PRIVATE/);
+    expect(problems[0]).toMatch(/the site answered 401/);
+  });
+
+  it("CRITICAL: 403 does NOT claim the site is private — it names the alternatives", () => {
+    // Found by running this from a sandboxed container: the egress proxy
+    // answers 403, and the first draft announced that a site loading fine in a
+    // browser was private. State the cause you can prove.
+    const blocked = { status: 403, text: "" };
+    const { problems } = liveSiteProblems({ origin: LIVE, root: blocked, robots: blocked, sitemap: blocked });
+    expect(problems.length).toBe(1);
+    expect(problems[0]).not.toMatch(/IS PRIVATE/);
+    expect(problems[0]).toMatch(/firewall|proxy/);
+    expect(problems[0]).toMatch(/Open it in a browser/);
+  });
+
+  it("CRITICAL: pages failing for DIFFERENT reasons are reported separately", () => {
+    // The collapse must not hide a second, different fault. A live site with
+    // one missing artifact is not the same shape as a private site.
+    const pages = livePages();
+    pages.sitemap = { status: 404, text: "" };
+    const { problems } = liveSiteProblems(pages);
+    expect(problems.length).toBe(1);
+    expect(problems[0]).toMatch(/\/sitemap\.xml answered 404/);
+  });
+
+  it("CRITICAL: a fetch that threw is UNREACHABLE, so the wifi cannot fail a delivery", () => {
+    const pages = livePages();
+    pages.root = { error: "getaddrinfo ENOTFOUND book.example.com" };
+    const { problems, unreachable } = liveSiteProblems(pages);
+    expect(problems).toEqual([]);
+    expect(unreachable.length).toBe(1);
+    expect(unreachable[0]).toMatch(/ENOTFOUND/);
+  });
+
+  it("CRITICAL: a reachable site serving yesterday's origin is a PROBLEM", () => {
+    // The other half of b0.10: the site is up, and pointing at the old host.
+    const pages = livePages();
+    pages.root = {
+      status: 200,
+      text: `<link rel="canonical" href="https://${OLD_HOST}/" /><meta property="og:url" content="${LIVE}/" />`,
+    };
+    const { problems } = liveSiteProblems(pages);
+    expect(problems.length).toBe(1);
+    expect(problems[0]).toMatch(/canonical/);
+  });
+
+  it("CRITICAL: a sitemap entry on another host is caught live, not just at build", () => {
+    const pages = livePages();
+    pages.sitemap = { status: 200, text: `<loc>${LIVE}/</loc><loc>https://${OLD_HOST}/camper/u1</loc>` };
+    expect(liveSiteProblems(pages).problems.some((p) => /sitemap\.xml names/.test(p))).toBe(true);
+  });
+
+  it("CRITICAL: a deploy that shipped the placeholder is caught live", () => {
+    const pages = livePages();
+    pages.root = {
+      status: 200,
+      text: `<link rel="canonical" href="${ORIGIN_PLACEHOLDER}/" /><meta property="og:url" content="${ORIGIN_PLACEHOLDER}/" />`,
+    };
+    expect(liveSiteProblems(pages).problems.some((p) => p.includes(ORIGIN_PLACEHOLDER))).toBe(true);
+  });
+
+  it("everything unreachable checks no content and asserts nothing about it", () => {
+    const gone = { error: "fetch failed" };
+    const { problems, unreachable } = liveSiteProblems({ origin: LIVE, root: gone, robots: gone, sitemap: gone });
+    expect(problems).toEqual([]);
+    expect(unreachable.length).toBe(3);
+  });
+
+  it("a missing page object is treated as unreachable rather than throwing", () => {
+    expect(() => liveSiteProblems({ origin: LIVE })).not.toThrow();
+    expect(liveSiteProblems({ origin: LIVE }).unreachable.length).toBe(3);
+  });
+});
+
+describe("the contract script runs the live check", () => {
+  const src = read("scripts/contract.mjs").replace(/^\s*\/\/.*$/gm, "");
+
+  // A BLOCK, BY BRACE MATCHING — not a regex window over the whole file.
+  //
+  // The first draft of the three tests below asserted /if \(!siteUrl\) \{[\s\S]*?failures\+\+/
+  // against the whole source. Mutating that block's `failures++` to `warnings++`
+  // left all of them GREEN, because the lazy window simply ran on and found a
+  // `failures++` in a later branch. A guard that cannot fail is not a guard;
+  // this is the CRM's whole-file-window hazard, reproduced exactly.
+  function block(anchor) {
+    const start = src.indexOf(anchor);
+    if (start === -1) return "";
+    const open = src.indexOf("{", start);
+    if (open === -1) return "";
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === "{") depth++;
+      else if (src[i] === "}" && --depth === 0) return src.slice(start, i + 1);
+    }
+    return "";
+  }
+
+  it("CRITICAL: it imports and calls liveSiteProblems", () => {
+    expect(src).toMatch(/import \{ liveSiteProblems \} from "\.\/site-origin\.mjs"/);
+    expect(src).toMatch(/liveSiteProblems\(\{/);
+  });
+
+  it("CRITICAL: CONTRACT_SITE_URL is required, not defaulted to a hostname", () => {
+    // A default would be the origin written down in a fifth place — the exact
+    // thing b0.10 removed. Absent means fail, loudly.
+    expect(src).toMatch(/CONTRACT_SITE_URL/);
+    expect(src).not.toMatch(/CONTRACT_SITE_URL[^\n]*\|\|[^\n]*https?:\/\//);
+
+    const unset = block("if (!siteUrl)");
+    expect(unset, "could not find the unset-CONTRACT_SITE_URL block").not.toBe("");
+    expect(unset, "an unset CONTRACT_SITE_URL must count as a FAILURE").toMatch(/failures\+\+/);
+    expect(unset, "an unset CONTRACT_SITE_URL must not merely warn").not.toMatch(/warnings\+\+/);
+  });
+
+  it("CRITICAL: problems fail and unreachable only warns", () => {
+    const bad = block("if (problems.length)");
+    const unreachable = block("else if (unreachable.length)");
+    expect(bad, "could not find the problems block").not.toBe("");
+    expect(unreachable, "could not find the unreachable block").not.toBe("");
+
+    expect(bad, "a misconfigured deploy must FAIL").toMatch(/failures\+\+/);
+    expect(bad, "a misconfigured deploy must not merely warn").not.toMatch(/warnings\+\+/);
+
+    // The other direction, and it matters just as much: a dropped connection
+    // must never fail a delivery, or this becomes a gate people skip.
+    expect(unreachable, "an unreachable site must only WARN").toMatch(/warnings\+\+/);
+    expect(unreachable, "an unreachable site must not fail the run").not.toMatch(/failures\+\+/);
+  });
+
+  it("CRITICAL: the live check never creates a booking", () => {
+    // The Edge Function section posts deliberately-invalid bodies for the same
+    // reason. This one only ever GETs; a POST here would leave a held booking
+    // behind on every run.
+    const liveSection = src.slice(src.indexOf("const siteUrl"));
+    expect(liveSection).not.toMatch(/method:\s*["']POST["']/);
   });
 });
