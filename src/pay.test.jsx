@@ -129,7 +129,11 @@ describe("the two calls", () => {
     const r = await loadPayPage("tok.sig");
     expect(r).toEqual({ ok: true, page: PAGE });
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://example.invalid/functions/v1/payment-options");
+    // From the environment, whatever it is - never a project URL written here
+    // (the first version pinned the container's dummy .env and failed on the
+    // dev box, which has the real one).
+    expect(url).toBe(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/payment-options`);
+    expect(url.endsWith("/functions/v1/payment-options")).toBe(true);
     expect(Object.keys(init.headers)).toEqual(["Content-Type"]);
     expect(JSON.parse(init.body)).toEqual({ action: "show", token: "tok.sig" });
   });
