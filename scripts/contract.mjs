@@ -118,6 +118,38 @@ for (const [view, spec] of Object.entries(VIEWS)) {
 // header. A 401 here means --no-verify-jwt was missed, which is the single
 // most likely deployment mistake for this endpoint.
 for (const [name, spec] of Object.entries(FUNCTIONS)) {
+  // b0.12 — a function with a `probe` says exactly what a harmless request to
+  // it must answer (payment-options: a token that cannot verify -> 401 with
+  // the server's own sentence). Without one, the request-booking check below.
+  if (spec.probe) {
+    try {
+      const res = await fetch(`${url}/functions/v1/${name}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(spec.probe.body),
+      });
+      const body = await res.json().catch(() => null);
+      const said = body && typeof body[spec.probe.key] === "string" && body[spec.probe.key].trim();
+      if (res.status === 404) {
+        console.log(`  ${red("FAIL")}  ${name} is not deployed`);
+        failures++;
+      } else if (res.status === spec.probe.status && said) {
+        console.log(`  ${green("ok")}    ${name} ${dim(`(refused a bad token in its own words, as it should)`)}`);
+      } else if ((res.status === 401 || res.status === 403) && !said) {
+        console.log(`  ${red("FAIL")}  ${name} answered ${res.status} with no sentence of its own`);
+        console.log(`        that is the gateway: redeploy with --no-verify-jwt, or no guest can pay`);
+        failures++;
+      } else {
+        console.log(`  ${red("FAIL")}  ${name} answered ${res.status}, expected ${spec.probe.status} with "${spec.probe.key}"`);
+        console.log(`        got ${JSON.stringify(body)?.slice(0, 120)}`);
+        failures++;
+      }
+    } catch (err) {
+      console.log(`  ${red("FAIL")}  ${name} — ${err.message}`);
+      failures++;
+    }
+    continue;
+  }
   try {
     const res = await fetch(`${url}/functions/v1/${name}`, {
       method: "POST",

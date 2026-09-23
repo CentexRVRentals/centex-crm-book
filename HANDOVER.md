@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| **Version** | `b0.11.0` — `package.json`, injected into the header at build. **Shown top-right on every page**, with the build time on hover. |
+| **Version** | `b0.12.0` — `package.json`, injected into the header at build. **Shown top-right on every page**, with the build time on hover. |
 | **Repo** | `C:\dev\centex-crm-book` |
 | **Deployed** | https://book.centexrvrentals.com/ — **public since b0.8, linked from centexrvrentals.com at swap-over (b0.10)**. The netlify.app address redirects here once the domain is primary in Netlify. The origin is never written in source: `scripts/site-origin.mjs` decides it at build |
 | **Stack** | Vite + React (JS, not TS), plain CSS, React Router. No Tailwind. |
 | **Gates** | `npm run preship` — ESLint then vitest. Offline, fast. |
-| **Contract** | `npm run contract` — **required before every push.** Needs the network, and `CONTRACT_SITE_URL` in `.env`. Checks the five views, the Edge Function, AND (b0.11) that the DEPLOYED SITE is reachable and names the right origin. |
+| **Contract** | `npm run contract` — **required before every push.** Needs the network, and `CONTRACT_SITE_URL` in `.env`. Checks the five views, both Edge Functions (b0.12: `payment-options` by a bad-token probe), AND (b0.11) that the DEPLOYED SITE is reachable and names the right origin. |
 
 **Versions are `bN.N` and belong to this repo alone.** The CRM is on its own
 line (v5.91 when b0.10 shipped). Calling a release here "v3.90" would mean
@@ -18,7 +18,7 @@ do with each other.
 
 ## 1. The contract — what this repo may touch
 
-**Five views and one function. That is the entire interface.**
+**Five views and two functions. That is the entire interface.** (b0.12 added `payment-options`.)
 
 This repo shares NO code with the CRM. Not a package, not a copied helper, not
 an import. If both need to format a date, they each have one.
@@ -34,9 +34,17 @@ an import. If both need to format a date, they each have one.
 | Function | For |
 |---|---|
 | `request-booking` | turns a request into a `held` booking the office approves |
+| `payment-options` | (b0.12) the `/pay/:token` page: `show` what a guest owes and can choose; `choose` a word (`deposit` / `full` / `balance`) and get a Stripe Checkout URL |
 
-Deployed `--no-verify-jwt`. It is the only write path this site has, and it is
-called with no `Authorization` header.
+Both deployed `--no-verify-jwt` and called with no `Authorization` header.
+`request-booking` is the only write this site makes to a booking;
+`payment-options` makes a Checkout Session and its pending payment row
+server-side. **The token in the pay URL is the credential** — signed by the
+CRM with `PAY_PAGE_SECRET`, valid to the end of the start day — so a 401 from
+`payment-options` WITH a sentence is a bad link (shown to the guest), and one
+WITHOUT a sentence is the gateway (a deploy missing `--no-verify-jwt`).
+**The page never sends an amount**: the CRM re-derives it at the moment of
+choosing.
 
 ### THE PROSE ABOVE IS NOT THE CONTRACT
 
@@ -259,6 +267,7 @@ Edge Function secrets → the same origin, so pay links return guests here.
 
 | | |
 |---|---|
+| **b0.12** | **Choose how to pay** (CRM v5.97, decisions 25-30). New route `/pay/:token`, reached from the approval text. `lib/payments.js` makes the two `payment-options` calls and words the answer (`payPageView`): outside the week before the trip, **Reservation Deposit** ("The remaining $700.00 is due Saturday, October 3.") **or Pay in Full**; inside it, Pay in Full with the reason; after a deposit, the Balance; on every one, the **Refundable Security Deposit** and its date. **The verbs ("is due", "is collected") come from the server**, so the day the CRM's charger ships the page says "will be charged to your card on" with no release here. The guest's browser is sent only to `https://checkout.stripe.com/…`. The page sets `robots: noindex, nofollow` and `referrer: no-referrer` while open and REMOVES both on unmount (meta.js never resets tags, so a leftover noindex would de-index the next page); its canonical is `/pay`, never the token. The redirect is a `leave` prop so the suite can see where it went (jsdom's location cannot be spied on). Contract: `payment-options` added with a `probe` (a token that cannot verify must answer 401 WITH its own sentence) and `npm run contract` runs it; `check-bundle.mjs` also looks for `payment-options`. `src/pay.test.jsx`, 23 tests. **Must ship before payments are switched on in the CRM**; with payments off the page answers "Online payment isn't available right now". |
 | **b0.11** | **The one guard that looks above the repo.** b0.10 shipped on 09-21 and the swap-over verification found the site had been answering **401 to every visitor since it was created** -- Netlify team protection, a setting one level above anything a test here can read, while b0.8's three tests correctly asserted that the two files this repo owns said "public" (section 6). `npm run contract` now also GETs `/`, `/robots.txt` and `/sitemap.xml` from `CONTRACT_SITE_URL` and fails on a non-200 or an origin that disagrees. **The split that makes it usable: a page that ANSWERED WRONG fails the run; a page that could not be REACHED only warns** -- the same reasoning that keeps this whole script out of preship, because a gate that cries about a dropped connection is a gate people skip. The assertion logic is pure (`liveSiteProblems` in `site-origin.mjs`), so preship covers every branch offline while the fetch stays in the script. **Two faults were found by RUNNING it rather than reading it:** it announced "THE SITE IS PRIVATE" on any 403, and a sandboxed container's egress proxy returns 403 -- so 401 (Netlify's actual signature, verified live) keeps that sentence while 403 now names the alternatives including a local proxy; and three pages answering the same status printed the same paragraph three times, so one cause now prints one line. **A third was found by MUTATION TESTING:** three of the new source guards used whole-file lazy windows and stayed GREEN when the block they described was inverted, because the match ran on and found the token in a later branch -- they use brace-matched blocks now, and all six mutations were re-run red. The contract is untouched: five views, one function. |
 | **b0.10** | **The origin is decided once, and swap-over is a domain change rather than a code change.** Through b0.9 `centex-crm-book.netlify.app` was written in `index.html` (canonical and `og:url` — the two tags a text-message preview reads, and previews do not run JavaScript), in `robots.txt`'s `Sitemap:` line, as a fallback in `sitemap.mjs`, and in a committed `sitemap.xml` that Netlify never used because the generator overwrites it every build. All four would have gone on naming the old host after the site got its own domain, silently. Now `scripts/site-origin.mjs` derives the origin — `VITE_SITE_URL`, else Netlify's own `URL` build variable (which becomes the custom domain the moment it is made primary), else localhost, and **never the old netlify.app fallback**: a build that cannot find its origin says localhost, which is visibly wrong in a screenshot, rather than a hostname that is wrong quietly. `vite.config.js` stamps it into `index.html`'s placeholder; `sitemap.mjs` writes `sitemap.xml` AND `robots.txt` from it (robots.txt is generated because its Sitemap line is an absolute URL); `check-bundle.mjs` **fails the build** if canonical, `og:url`, the `Sitemap:` line and every `<loc>` do not agree — that is a broken pipeline, not the thin sitemap the b0.8 rule protects, so failing is right. `robots.txt`, `sitemap.xml` and `supabase/.temp/` leave git. `src/site-origin.test.js` drives every mismatch the checker must catch (a negative test that does not fail proves nothing) and sweeps every shipped or build file for the old host. `meta.test.jsx` reads the robots template instead of the file. The contract is untouched: five views, one function. |
 | **b0.9** | **`/paid/:reservationNum` — where Stripe returns a guest after checkout.** **It looks NOTHING up, and that is the release.** The obvious version reads the payment row and reports its status. The webhook is ASYNC: Stripe redirects the browser the instant payment succeeds and delivers `checkout.session.completed` separately over its own connection, and the browser usually wins that race — so a page reading the row would tell a guest who has just paid that their payment is pending, which is the one thing it must never say. It would also need a SIXTH anon view, keyed on a string shaped `WEB-260911-PAV7` — roughly a million combinations, which is not a secret but a speed bump, and publishing who paid what behind a speed bump for a page that does not need it. Stripe only redirects to `success_url` AFTER the payment succeeded, so the redirect itself is the evidence; the page says what that supports and stops. **`?cancelled=1` is the same route:** the CRM set `cancel_url` to the same URL as `success_url`, so a guest who backed out of checkout landed on a page thanking them for paying (fixed CRM-side in v4.04). One route rather than two, because the guest needs the same things either way — their reference, a way back, and no claim that is not true — and the cancelled wording is deliberately not phrased as an error, because backing out is a normal thing to do and the link still works. **The contract is untouched: still five views and one function.** |

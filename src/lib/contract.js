@@ -1,7 +1,7 @@
 // THE CONTRACT.
 //
-// This repo reads five views in the Centex CRM's database and calls one Edge
-// Function. That is the entire interface. It never reads a base table, never
+// This repo reads five views in the Centex CRM's database and calls two Edge
+// Functions (request-booking; from b0.12, payment-options). That is the entire interface. It never reads a base table, never
 // writes anything directly, and shares no code with the CRM repo.
 //
 // WHY THIS FILE IS DATA AND NOT PROSE. A document describing another repo's
@@ -88,7 +88,7 @@ export const VIEWS = {
 };
 
 // ----------------------------------------------------------------------------
-// The one function.
+// The functions.
 // ----------------------------------------------------------------------------
 // Deployed --no-verify-jwt, so it is called with no Authorization header. It is
 // the only write path this site has.
@@ -107,6 +107,25 @@ export const FUNCTIONS = {
     // guest verbatim — this site does not rewrite them, because the server is
     // the only thing that knows why it refused.
     returns: ["ok", "reservationNum", "errors", "duplicate"],
+  },
+
+  // b0.12 — the "choose how to pay" page (/pay/:token). Deployed
+  // --no-verify-jwt like request-booking: the signed token in the URL is the
+  // credential (CRM decision 28), so it is called with no Authorization header.
+  "payment-options": {
+    why: "the pay page: what a guest owes and how they can pay it, then a Stripe Checkout",
+    method: "POST",
+    // `option` is a WORD (deposit | full | balance), never an amount — the
+    // server re-derives what to charge at the moment of choosing.
+    sends: ["action", "token", "option"],
+    returns: [
+      "reservationNum", "unitName", "start", "end", "totalCents", "paidCents", "owedCents",
+      "insideWindow", "windowDays", "options", "security", "words", "url", "error",
+    ],
+    // How `npm run contract` checks it is deployed without creating anything:
+    // a token that cannot verify must come back 401 WITH the server's own
+    // sentence. The gateway's 401 (no --no-verify-jwt) carries no `error`.
+    probe: { body: { action: "show", token: "contract.check" }, status: 401, key: "error" },
   },
 };
 

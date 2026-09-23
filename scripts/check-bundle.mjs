@@ -56,6 +56,7 @@ const MUST_CONTAIN = [
   ["Centex RV Rentals", "the header — the app itself"],
   ["public_listings", "the data layer"],
   ["request-booking", "the write path"],
+  ["payment-options", "the pay page (b0.12)"],
   ["Choose your dates", "the date picker"],
   [pkg.version, `the injected version (${pkg.version})`],
 ];
