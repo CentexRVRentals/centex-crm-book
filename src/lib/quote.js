@@ -41,11 +41,18 @@ export function addonsPayload(selections, addons = []) {
 // A quote the server sent, or null. Checked field by field: a body without
 // `quote: true` is not a quote (an older deploy, or the honeypot's plausible
 // nothing), and a total that is not a whole number of cents is not a price.
+//
+// b0.14 (CRM v6.05): a quote also carries subtotalCents and taxCents, and
+// they must add up to the total - the page shows Subtotal / Tax / Total and
+// adds up nothing itself. A server from before v6.05 sends neither, and its
+// answer is not a quote this page can show.
 export function readQuote(body, { requireFlag = true } = {}) {
   if (!body || body.ok !== true) return null;
   if (requireFlag && body.quote !== true) return null;
   if (!Array.isArray(body.lines) || !body.lines.length) return null;
   if (!Number.isInteger(body.totalCents)) return null;
+  if (!Number.isInteger(body.subtotalCents) || !Number.isInteger(body.taxCents)) return null;
+  if (body.subtotalCents + body.taxCents !== body.totalCents) return null;
   const kinds = FUNCTIONS["request-booking"].quote.kinds;
   const lines = [];
   for (const l of body.lines) {
@@ -58,16 +65,34 @@ export function readQuote(body, { requireFlag = true } = {}) {
       nights: Number.isInteger(l.nights) ? l.nights : null,
       unitPriceCents: Number.isInteger(l.unitPriceCents) ? l.unitPriceCents : null,
       amountCents: l.amountCents,
+      // b0.14 - one-way miles on a delivery line priced by distance, else null.
+      miles: l.kind === "delivery" && Number.isInteger(l.miles) && l.miles >= 0 ? l.miles : null,
     });
   }
-  return { lines, totalCents: body.totalCents, estimate: body.estimate === true };
+  return {
+    lines,
+    subtotalCents: body.subtotalCents,
+    taxCents: body.taxCents,
+    totalCents: body.totalCents,
+    estimate: body.estimate === true,
+  };
+}
+
+// b0.14 - the delivery address, ONLY when all four parts are there (the same
+// rule the server prices by: a street with no town geocodes somewhere,
+// confidently and wrongly). Anything less sends no address, and the server
+// quotes delivery as "from $minimum".
+export function deliveryDestination(d) {
+  const t = (v) => (typeof v === "string" ? v.trim() : "");
+  const out = { address: t(d?.address), city: t(d?.city), state: t(d?.state), zip: t(d?.zip) };
+  return out.address.length >= 5 && out.city && out.state && out.zip ? out : null;
 }
 
 // Asks. Resolves to { ok: true, quote } | { ok: false, errors } |
 // { ok: false, unavailable: true } - never throws, never rejects, and an
 // aborted call (the guest changed something) resolves { aborted: true } so the
 // caller can ignore it.
-export async function quoteBooking({ unitId, start, end, method, addons }, { signal } = {}) {
+export async function quoteBooking({ unitId, start, end, method, addons, destination }, { signal } = {}) {
   const url = apiUrl();
   if (!url) {
     console.error("VITE_SUPABASE_URL is not set — the quote could not be asked for");
@@ -78,7 +103,11 @@ export async function quoteBooking({ unitId, start, end, method, addons }, { sig
     res = await fetch(`${url}/functions/v1/request-booking`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quote: true, unitId, start, end, method: method === "delivery" ? "delivery" : "pickup", addons }),
+      body: JSON.stringify({
+        quote: true, unitId, start, end, method: method === "delivery" ? "delivery" : "pickup", addons,
+        // b0.14 - only a complete address, and only for delivery.
+        ...(method === "delivery" && deliveryDestination(destination) ? deliveryDestination(destination) : {}),
+      }),
       signal,
     });
   } catch (err) {
@@ -148,7 +177,9 @@ export function lineDetail(line) {
     return parts.join(" × ");
   }
   if (line.kind === "delivery") {
-    return "We'll confirm the delivery price.";
+    // b0.14 - priced by distance (CRM v6.05): the miles it was priced for.
+    // Otherwise the minimum, which the office confirms.
+    return Number.isInteger(line.miles) ? `${plural(line.miles, "mile", "miles")}, one-way` : "We'll confirm the delivery price.";
   }
   return "";
 }
@@ -157,7 +188,10 @@ export function lineDetail(line) {
 // "from $X" (CRM decision 5); with no minimum set it is only a promise to
 // confirm, not a "$0".
 export function lineAmount(line) {
-  if (line.kind === "delivery") return line.amountCents > 0 ? `from ${cents(line.amountCents)}` : "to confirm";
+  if (line.kind === "delivery") {
+    if (Number.isInteger(line.miles)) return cents(line.amountCents);
+    return line.amountCents > 0 ? `from ${cents(line.amountCents)}` : "to confirm";
+  }
   return cents(line.amountCents);
 }
 
@@ -167,6 +201,17 @@ export function totalAmount(quote) {
   return quote.estimate ? `from ${cents(quote.totalCents)}` : cents(quote.totalCents);
 }
 
+// b0.14 - the lines a guest is shown: everything but the per-rate tax lines,
+// which the server still sends (and stores) but which are shown as ONE Tax
+// figure under the Subtotal (Jesse, 09-24).
+export function itemLines(quote) {
+  return quote.lines.filter((l) => l.kind !== "tax");
+}
+
 // How long the quote box waits after the last change before asking. Long
 // enough that stepping a quantity 1 -> 4 is one call, short enough to feel live.
 export const QUOTE_DEBOUNCE_MS = 400;
+// b0.14 - longer while an address is being typed: every pause with a complete
+// address is a distance lookup on the server, and the office app waits 900 ms
+// for the same reason.
+export const ADDRESS_DEBOUNCE_MS = 900;

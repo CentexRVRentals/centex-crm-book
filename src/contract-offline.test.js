@@ -14,7 +14,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VIEWS, FUNCTIONS, FORBIDDEN_TABLES } from "./lib/contract.js";
+import { VIEWS, FUNCTIONS, FORBIDDEN_TABLES, OUTSIDE } from "./lib/contract.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(__dirname);
@@ -231,14 +231,46 @@ describe("the contract itself is well formed", () => {
   it("CRITICAL: the quote is declared - what it sends, returns, and what a line is", () => {
     const rb = FUNCTIONS["request-booking"];
     expect(rb.sends).toContain("addons");
-    expect(rb.returns).toEqual(expect.arrayContaining(["lines", "totalCents", "estimate"]));
-    expect(rb.quote.sends).toEqual(expect.arrayContaining(["quote", "unitId", "start", "end", "method", "addons"]));
+    expect(rb.returns).toEqual(expect.arrayContaining(["lines", "subtotalCents", "taxCents", "totalCents", "estimate"]));
+    expect(rb.quote.sends).toEqual(expect.arrayContaining(["quote", "unitId", "start", "end", "method", "addons", "address", "city", "state", "zip"]));
+    expect(rb.quote.returns).toEqual(expect.arrayContaining(["subtotalCents", "taxCents", "totalCents"]));
     // A quote asks about a STAY: no person, no honeypot, no money.
     for (const k of ["name", "email", "phone", "company", "total", "price", "dryRun"]) expect(rb.quote.sends).not.toContain(k);
-    expect(rb.quote.line).toEqual(["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents"]);
+    expect(rb.quote.line).toEqual(["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents", "miles"]);
     // No tax rate ever reaches the guest (CRM: publicQuote sends amounts only).
     expect(JSON.stringify(rb.quote)).not.toMatch(/rate/i);
     expect(rb.quote.kinds).toEqual(["rental", "prep", "addon", "delivery", "tax"]);
+  });
+
+  // b0.14 - the one outside host, declared, and held to the one file.
+  it("CRITICAL: the only outside host in the source is the declared one, used only where declared", () => {
+    const hosts = new Set();
+    const where = {};
+    for (const f of CODE) {
+      const text = f.text.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l)).join("\n");
+      for (const m of text.matchAll(/https:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi)) {
+        hosts.add(m[1]);
+        (where[m[1]] ||= new Set()).add(f.file);
+      }
+    }
+    const declared = Object.values(OUTSIDE).map((o) => new URL(o.host).hostname);
+    // checkout.stripe.com is where Pay sends the guest's BROWSER (b0.12), not
+    // a call this site makes; the example.* hosts appear only in guards.
+    const allowed = new Set([...declared, "checkout.stripe.com"]);
+    const extra = [...hosts].filter((h) => !allowed.has(h) && !/^example\./.test(h));
+    expect(extra, `undeclared hosts: ${extra.join(", ")}`).toEqual([]);
+    for (const o of Object.values(OUTSIDE)) {
+      // contract.js DECLARES the host; the one file named there USES it.
+      const files = [...(where[new URL(o.host).hostname] || [])].filter((f) => !f.endsWith(path.join("lib", "contract.js")));
+      expect(files.every((f) => f.endsWith(path.join(...o.file.split("/").slice(1)))), `${o.host} used in ${files.join(", ")}`).toBe(true);
+    }
+  });
+
+  it("CRITICAL: the Mapbox token comes from the environment, and is never a secret one", () => {
+    const addr = CODE.find((f) => f.file.endsWith(path.join("lib", "address.js")));
+    expect(addr.text).toMatch(/import\.meta\.env\.VITE_MAPBOX_TOKEN/);
+    // pk. is public; sk. is a secret token and must never ship in a bundle.
+    expect(CODE.filter((f) => /\b(pk|sk)\.[A-Za-z0-9_-]{20,}/.test(f.text)).map((f) => f.file)).toEqual([]);
   });
 
   it("CRITICAL: charge_by is gone from the contract and from every read (CRM decision 6)", () => {

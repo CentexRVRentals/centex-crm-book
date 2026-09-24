@@ -1,8 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { requestBooking, buildPayload } from "../lib/request.js";
 import { checkDates, todayCentral } from "../lib/dates.js";
 import { QuoteBox } from "./Quote.jsx";
+import { suggestAddresses, suggestionsEnabled, SUGGEST_DEBOUNCE_MS } from "../lib/address.js";
+import { ADDRESS_DEBOUNCE_MS, QUOTE_DEBOUNCE_MS } from "../lib/quote.js";
 
 // The request form. Name, contact, delivery if wanted, submit.
 //
@@ -31,6 +33,27 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
   });
   const [busyState, setBusy] = useState(false);
   const [errors, setErrors] = useState([]);
+
+  // b0.14 - address suggestions. Stored WITH the text they answer, so a list
+  // for "285 Col" never shows under "285 Cold Spring Rd"; `picked` is the line
+  // just chosen, so choosing one does not immediately ask again.
+  const [suggest, setSuggest] = useState({ query: "", list: [] });
+  const [picked, setPicked] = useState("");
+  useEffect(() => {
+    const q = delivery.address.trim();
+    if (!delivery.wanted || !suggestionsEnabled() || q.length < 4 || q === picked) return undefined;
+    const ctrl = new AbortController();
+    const timer = setTimeout(async () => {
+      const list = await suggestAddresses(q, { signal: ctrl.signal });
+      if (!ctrl.signal.aborted) setSuggest({ query: q, list });
+    }, SUGGEST_DEBOUNCE_MS);
+    return () => { clearTimeout(timer); ctrl.abort(); };
+  }, [delivery.wanted, delivery.address, picked]);
+  const shownSuggestions = suggest.query === delivery.address.trim() && suggest.query !== picked ? suggest.list : [];
+  function pickAddress(s) {
+    setPicked(s.address);
+    setDelivery((d) => ({ ...d, address: s.address, city: s.city, state: s.state, zip: s.zip }));
+  }
 
   const set = (k) => (e) => setGuest((g) => ({ ...g, [k]: e.target.value }));
   const setDel = (k) => (e) => setDelivery((d) => ({ ...d, [k]: e.target.value }));
@@ -132,8 +155,24 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
               <>
                 <label>
                   <span>Delivery address</span>
-                  <input value={delivery.address} onChange={setDel("address")} autoComplete="street-address" />
+                  <input
+                    value={delivery.address}
+                    onChange={setDel("address")}
+                    autoComplete="street-address"
+                    placeholder={suggestionsEnabled() ? "Start typing your address…" : undefined}
+                  />
                 </label>
+                {/* b0.14 - suggestions. Buttons, so a tap and a keyboard both
+                    choose; choosing fills all four boxes. */}
+                {shownSuggestions.length ? (
+                  <ul className="addr-suggest" aria-label="Suggested addresses">
+                    {shownSuggestions.map((s) => (
+                      <li key={s.label}>
+                        <button type="button" onClick={() => pickAddress(s)}>{s.label}</button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <div className="row">
                   <label><span>City</span><input value={delivery.city} onChange={setDel("city")} autoComplete="address-level2" /></label>
                   <label style={{ maxWidth: 90 }}><span>State</span><input value={delivery.state} onChange={setDel("state")} autoComplete="address-level1" /></label>
@@ -173,6 +212,8 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
         dates={dates}
         method={delivery.wanted ? "delivery" : "pickup"}
         addons={addons}
+        destination={delivery}
+        debounceMs={delivery.wanted ? ADDRESS_DEBOUNCE_MS : QUOTE_DEBOUNCE_MS}
         inForm
         ready={checkDates({
           start: dates.start, end: dates.end, busy,

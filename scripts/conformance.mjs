@@ -125,6 +125,10 @@ async function priceProblem(u) {
       "Deploy CRM v6.03 before running this."
     );
   }
+  // b0.14 - the site reads Subtotal / Tax / Total, which CRM v6.05 sends.
+  if (body.ok === true && !Number.isInteger(body.subtotalCents)) {
+    throw new Error("request-booking priced a quote without subtotalCents. Deploy CRM v6.05 before running this.");
+  }
   return body.ok === true ? "" : (body.errors || ["refused, no reason given"])[0];
 }
 const byBusiest = listings

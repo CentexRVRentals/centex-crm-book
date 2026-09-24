@@ -92,7 +92,10 @@ a { color: inherit; text-decoration: none; }
 .quote-lines .k { display: flex; flex-direction: column; }
 .quote-lines .q-detail { font-size: .8rem; color: var(--ink-s); }
 .quote-lines .q-tax .k { font-size: .85rem; }
+.quote-lines li.q-subtotal { border-top: 1px solid var(--ink-s); }
+.quote-lines li.q-subtotal + li.q-taxsum { border-bottom: 0; }
 .quote-lines li.q-total { border-top: 1px solid var(--ink-s); border-bottom: 0; font-weight: 600; padding-top: 10px; }
+.quote-lines li.q-subtotal ~ li.q-total { border-top: 1px solid var(--line); }
 .quote-stale { opacity: .55; }
 .quote.in-form { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
 .quote.in-form h3 { margin: 0 0 8px; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-s); }
@@ -190,3 +193,9 @@ a { color: inherit; text-decoration: none; }
 .site-head .ver { margin-left: auto; color: #A9BEB2; font-size: .72rem;
                   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
                   letter-spacing: .04em; }
+
+/* b0.14 - address suggestions under the delivery address. */
+.addr-suggest { list-style: none; margin: -6px 0 8px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.addr-suggest li + li { border-top: 1px solid var(--line); }
+.addr-suggest button { display: block; width: 100%; text-align: left; font: inherit; font-size: .88rem; padding: 8px 6px; background: none; border: 0; color: var(--ink); cursor: pointer; }
+.addr-suggest button:hover, .addr-suggest button:focus { background: var(--bg, #f5f2ea); }

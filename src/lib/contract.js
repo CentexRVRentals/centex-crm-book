@@ -121,7 +121,9 @@ export const FUNCTIONS = {
     //
     // b0.13 (CRM v6.03): a real request also returns the quote it saved -
     // `lines`, `totalCents`, `estimate` - which /requested shows.
-    returns: ["ok", "reservationNum", "errors", "duplicate", "lines", "totalCents", "estimate"],
+    //
+    // b0.14 (CRM v6.05): + subtotalCents and taxCents - Subtotal / Tax / Total.
+    returns: ["ok", "reservationNum", "errors", "duplicate", "lines", "subtotalCents", "taxCents", "totalCents", "estimate"],
 
     // b0.13 - THE LIVE QUOTE. The same function with `quote: true`: the camper,
     // dates, method and add-ons are checked exactly as a request checks them,
@@ -134,10 +136,16 @@ export const FUNCTIONS = {
     // rate is ever sent - a rate is a business detail the guest sees as an
     // amount. `estimate` is true when delivery is on it: the delivery line is
     // the camper's minimum and the office confirms the distance.
+    //
+    // b0.14 (CRM v6.05): a delivery quote may carry the address (all four
+    // parts, or none) and is then priced BY THE MILE - the delivery line gets
+    // `miles` and `estimate` goes false. Too far is a refusal in Jesse's
+    // words. `subtotalCents + taxCents = totalCents`; the page shows those three
+    // and not the per-rate tax lines, which are still sent.
     quote: {
-      sends: ["quote", "unitId", "start", "end", "method", "addons"],
-      returns: ["ok", "quote", "lines", "totalCents", "estimate", "errors"],
-      line: ["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents"],
+      sends: ["quote", "unitId", "start", "end", "method", "addons", "address", "city", "state", "zip"],
+      returns: ["ok", "quote", "lines", "subtotalCents", "taxCents", "totalCents", "estimate", "errors"],
+      line: ["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents", "miles"],
       kinds: ["rental", "prep", "addon", "delivery", "tax"],
     },
   },
@@ -159,6 +167,22 @@ export const FUNCTIONS = {
     // a token that cannot verify must come back 401 WITH the server's own
     // sentence. The gateway's 401 (no --no-verify-jwt) carries no `error`.
     probe: { body: { action: "show", token: "contract.check" }, status: 401, key: "error" },
+  },
+};
+
+// ----------------------------------------------------------------------------
+// b0.14 — the ONE outside service. Not the CRM, so not a view or a function:
+// Mapbox's geocoder, for address SUGGESTIONS on the delivery form, with this
+// site's own public token (restricted to the site's origin in Mapbox). It
+// decides nothing - the server prices distance with its own secret token. An
+// offline guard holds every other host out of the source.
+// ----------------------------------------------------------------------------
+export const OUTSIDE = {
+  mapbox: {
+    why: "address suggestions on the delivery form - never a price",
+    host: "https://api.mapbox.com",
+    env: "VITE_MAPBOX_TOKEN",
+    file: "src/lib/address.js",
   },
 };
 

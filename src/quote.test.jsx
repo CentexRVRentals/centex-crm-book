@@ -22,8 +22,8 @@ import path from "node:path";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 import {
-  addonsPayload, readQuote, quoteBooking, cents, lineDetail, lineAmount, totalAmount,
-  QUOTE_UNAVAILABLE, QUOTE_DEBOUNCE_MS,
+  addonsPayload, readQuote, quoteBooking, cents, lineDetail, lineAmount, totalAmount, deliveryDestination,
+  QUOTE_UNAVAILABLE, QUOTE_DEBOUNCE_MS, ADDRESS_DEBOUNCE_MS,
 } from "./lib/quote.js";
 import { buildPayload, requestBooking } from "./lib/request.js";
 import { FUNCTIONS } from "./lib/contract.js";
@@ -46,7 +46,12 @@ const LINES = [
 // DELIBERATELY NOT THE SUM OF THE LINES (which is 73,697). If the page ever
 // adds the lines up itself, the tests that look for $741.23 fail.
 const SERVER_TOTAL = 74123;
-const QUOTE_BODY = { ok: true, quote: true, lines: LINES, totalCents: SERVER_TOTAL, estimate: false };
+// b0.14 - the three figures, from the SERVER, and deliberately not the
+// browser's sums either: the non-tax lines add to 70,100, and the page must
+// show 70,526 because that is what it was sent.
+const SERVER_TAX = 3597;
+const SERVER_SUBTOTAL = SERVER_TOTAL - SERVER_TAX;
+const QUOTE_BODY = { ok: true, quote: true, lines: LINES, subtotalCents: SERVER_SUBTOTAL, taxCents: SERVER_TAX, totalCents: SERVER_TOTAL, estimate: false };
 
 const ADDONS = [
   { addonId: "prep", name: "Prep kit", price: 40, daily: false, required: true, maxQuantity: 1 },
@@ -57,6 +62,8 @@ const ADDONS = [
 ];
 
 const reply = (body, status = 200) => ({ status, json: async () => body });
+// A consistent quote with a different total (subtotal + tax = total holds).
+const withTotal = (total, over = {}) => ({ ...QUOTE_BODY, subtotalCents: total - SERVER_TAX, totalCents: total, ...over });
 const sentBody = (spy, n = 0) => JSON.parse(spy.mock.calls[n][1].body);
 
 async function mount(ui) {
@@ -111,7 +118,10 @@ describe("what is sent", () => {
     await quoteBooking({ unitId: "u1", start: "2026-11-01", end: "2026-11-05", method: "delivery", addons: [{ id: "gen", qty: 1 }] });
     expect(spy.mock.calls[0][0]).toBe(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/request-booking`);
     const body = sentBody(spy);
-    expect(Object.keys(body).sort()).toEqual([...FUNCTIONS["request-booking"].quote.sends].sort());
+    // Every key is one the contract names; with no complete address there is
+    // no address at all (b0.14 - the server then quotes "from $minimum").
+    for (const k of Object.keys(body)) expect(FUNCTIONS["request-booking"].quote.sends).toContain(k);
+    for (const k of ["address", "city", "state", "zip"]) expect(body).not.toHaveProperty(k);
     expect(body.quote).toBe(true);
     expect(body.method).toBe("delivery");
     expect(body.addons).toEqual([{ id: "gen", qty: 1 }]);
@@ -175,7 +185,7 @@ describe("what comes back", () => {
   });
 
   it("CRITICAL: a real request hands on the quote the server SAVED; a duplicate has none", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => reply({ ok: true, reservationNum: "WEB-1", lines: LINES, totalCents: SERVER_TOTAL, estimate: false })));
+    vi.stubGlobal("fetch", vi.fn(async () => reply({ ok: true, reservationNum: "WEB-1", lines: LINES, subtotalCents: SERVER_SUBTOTAL, taxCents: SERVER_TAX, totalCents: SERVER_TOTAL, estimate: false })));
     const r = await requestBooking({});
     expect(r.quote.totalCents).toBe(SERVER_TOTAL);
     vi.stubGlobal("fetch", vi.fn(async () => reply({ ok: true, reservationNum: "WEB-1", duplicate: true })));
@@ -298,10 +308,15 @@ describe("the quote box", () => {
     await tick();
     const t = m.host.textContent;
     expect(t).toContain("$109 × 4 nights");
-    expect(t).toContain("Tax on rental");
+    // b0.14 - ONE Tax figure under a Subtotal; the per-rate tax lines are not
+    // listed (Jesse, 09-24). All three are the server's numbers.
+    expect(t).not.toContain("Tax on rental");
     expect(t).toContain("Generator");
-    expect(t).toContain("$741.23");
+    expect(m.host.querySelector(".q-subtotal").textContent).toBe("Subtotal$705.26");
+    expect(m.host.querySelector(".q-taxsum").textContent).toBe("Tax$35.97");
+    expect(m.host.querySelector(".q-total").textContent).toBe("Total$741.23");
     expect(t).not.toContain("$736.97"); // the browser's sum of the lines
+    expect(t).not.toContain("$701"); // the browser's sum of the non-tax lines
     m.cleanup();
   });
 
@@ -326,14 +341,14 @@ describe("the quote box", () => {
     const first = new Promise((r) => { releaseFirst = r; });
     const spy = vi.fn()
       .mockImplementationOnce(() => first)
-      .mockImplementationOnce(async () => reply({ ...QUOTE_BODY, totalCents: 99900 }));
+      .mockImplementationOnce(async () => reply(withTotal(99900)));
     vi.stubGlobal("fetch", spy);
     const m = await mount(box({ addons: [] }));
     await tick();
     m.rerender(box({ addons: [{ id: "gen", qty: 1 }] }));
     await tick();
     expect(m.host.textContent).toContain("$999");
-    await act(async () => { releaseFirst(reply({ ...QUOTE_BODY, totalCents: 11100 })); for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    await act(async () => { releaseFirst(reply(withTotal(11100))); for (let i = 0; i < 6; i++) await Promise.resolve(); });
     expect(m.host.textContent).toContain("$999");
     expect(m.host.textContent).not.toContain("$111");
     expect(spy.mock.calls[0][1].signal.aborted).toBe(true);
@@ -346,7 +361,7 @@ describe("the quote box", () => {
     // dimmed and marked "Updating", but never as the current total.
     const spy = vi.fn()
       .mockImplementationOnce(async () => reply(QUOTE_BODY))
-      .mockImplementationOnce(async () => reply({ ...QUOTE_BODY, totalCents: 99900 }));
+      .mockImplementationOnce(async () => reply(withTotal(99900)));
     vi.stubGlobal("fetch", spy);
     const m = await mount(box({ addons: [] }));
     await tick();
@@ -381,7 +396,7 @@ describe("the quote box", () => {
 
   it("CRITICAL: delivery reads 'from $X - we'll confirm the delivery price', and so does the total", async () => {
     const delivery = { kind: "delivery", label: "Delivery (from - the office confirms the distance)", addonId: null, quantity: 1, nights: null, unitPriceCents: 7500, amountCents: 7500 };
-    const spy = vi.fn(async () => reply({ ...QUOTE_BODY, lines: [...LINES, delivery], totalCents: 81623, estimate: true }));
+    const spy = vi.fn(async () => reply(withTotal(81623, { lines: [...LINES, delivery], estimate: true })));
     vi.stubGlobal("fetch", spy);
     const m = await mount(box({ method: "delivery" }));
     await tick();
@@ -423,7 +438,11 @@ describe("the request form prices what it sends", () => {
     expect(sentBody(spy, 0)).toMatchObject({ quote: true, method: "pickup", addons: [{ id: "gen", qty: 1 }] });
     expect(m.host.textContent).toContain("$741.23");
     act(() => { m.host.querySelector('input[type="checkbox"]').click(); });
-    await tick();
+    // b0.14 - with delivery ticked the box waits longer (an address may be
+    // being typed, and every complete one is a distance lookup).
+    await tick(QUOTE_DEBOUNCE_MS);
+    expect(spy).toHaveBeenCalledTimes(1);
+    await tick(ADDRESS_DEBOUNCE_MS - QUOTE_DEBOUNCE_MS);
     expect(sentBody(spy, 1).method).toBe("delivery");
     m.cleanup();
   });
@@ -433,7 +452,7 @@ describe("the request form prices what it sends", () => {
     vi.stubGlobal("fetch", vi.fn(async (_u, opts) => {
       const b = JSON.parse(opts.body);
       bodies.push(b);
-      return b.quote ? reply(QUOTE_BODY) : reply({ ok: true, reservationNum: "WEB-9", lines: LINES, totalCents: SERVER_TOTAL });
+      return b.quote ? reply(QUOTE_BODY) : reply({ ok: true, reservationNum: "WEB-9", lines: LINES, subtotalCents: SERVER_SUBTOTAL, taxCents: SERVER_TAX, totalCents: SERVER_TOTAL });
     }));
     const m = await mount(form([{ id: "lin", qty: 2 }]));
     await tick();
@@ -511,5 +530,106 @@ describe("the source says nothing about fees either", () => {
       return /service fee|booking fee|no fees|fee-free|without fees|commission-free/i.test(code);
     });
     expect(offenders.map((f) => path.relative(process.cwd(), f))).toEqual([]);
+  });
+});
+
+// ============================================================================
+// b0.14 (CRM v6.05) - Subtotal / Tax / Total, and delivery by the mile.
+// ============================================================================
+describe("b0.14 - what is read", () => {
+  it("CRITICAL: a quote without the three figures, or whose figures do not add up, is not a quote", () => {
+    const { subtotalCents, taxCents, ...old } = QUOTE_BODY;
+    expect(subtotalCents + taxCents).toBe(SERVER_TOTAL);
+    expect(readQuote(old)).toBeNull(); // a pre-v6.05 server
+    expect(readQuote({ ...QUOTE_BODY, taxCents: 1 })).toBeNull();
+    expect(readQuote({ ...QUOTE_BODY, subtotalCents: 70526.5 })).toBeNull();
+    // Halves that DO add up are still not cents.
+    expect(readQuote({ ...QUOTE_BODY, subtotalCents: SERVER_SUBTOTAL + 0.5, taxCents: SERVER_TAX - 0.5 })).toBeNull();
+    expect(readQuote(QUOTE_BODY)).toMatchObject({ subtotalCents: SERVER_SUBTOTAL, taxCents: SERVER_TAX, totalCents: SERVER_TOTAL });
+  });
+
+  it("miles are kept on a delivery line only, and only as a whole number", () => {
+    const d = { kind: "delivery", label: "Delivery (41 miles)", addonId: null, quantity: 1, nights: null, unitPriceCents: 29150, amountCents: 29150, miles: 41 };
+    const q = readQuote(withTotal(SERVER_TOTAL, { lines: [...LINES, d, { ...LINES[0], miles: 9 }] }));
+    expect(q.lines.find((l) => l.kind === "delivery").miles).toBe(41);
+    expect(q.lines.filter((l) => l.kind !== "delivery").every((l) => l.miles === null)).toBe(true);
+    expect(readQuote(withTotal(SERVER_TOTAL, { lines: [{ ...d, miles: 4.5 }] })).lines[0].miles).toBeNull();
+  });
+});
+
+describe("b0.14 - the address, sent only when it is whole", () => {
+  const FULL = { address: "285 Cold Spring", city: "Buda", state: "TX", zip: "78610" };
+
+  it("CRITICAL: all four parts or nothing", () => {
+    expect(deliveryDestination(FULL)).toEqual(FULL);
+    expect(deliveryDestination({ ...FULL, city: "  Buda " })).toEqual(FULL);
+    for (const k of Object.keys(FULL)) expect(deliveryDestination({ ...FULL, [k]: "" }), k).toBeNull();
+    expect(deliveryDestination({ ...FULL, address: "285" })).toBeNull();
+    expect(deliveryDestination(null)).toBeNull();
+  });
+
+  it("CRITICAL: a delivery quote carries it; a pick-up quote never does", async () => {
+    const spy = vi.fn(async () => reply(QUOTE_BODY));
+    vi.stubGlobal("fetch", spy);
+    await quoteBooking({ unitId: "u1", start: "a", end: "b", method: "delivery", addons: [], destination: FULL });
+    expect(sentBody(spy, 0)).toMatchObject(FULL);
+    await quoteBooking({ unitId: "u1", start: "a", end: "b", method: "pickup", addons: [], destination: FULL });
+    await quoteBooking({ unitId: "u1", start: "a", end: "b", method: "delivery", addons: [], destination: { ...FULL, zip: "" } });
+    for (const n of [1, 2]) for (const k of Object.keys(FULL)) expect(sentBody(spy, n)).not.toHaveProperty(k);
+  });
+});
+
+describe("b0.14 - the box", () => {
+  const DATES = { start: "2026-11-01", end: "2026-11-05" };
+  const FULL = { address: "285 Cold Spring", city: "Buda", state: "TX", zip: "78610" };
+  const box = (over = {}) => <QuoteBox unitId="u1" dates={DATES} method="delivery" addons={[]} ready destination={{ ...FULL, zip: "" }} {...over} />;
+  beforeEach(() => { vi.useFakeTimers(); });
+
+  it("CRITICAL: typing an incomplete address does not re-ask; completing it does", async () => {
+    const spy = vi.fn(async () => reply(QUOTE_BODY));
+    vi.stubGlobal("fetch", spy);
+    const m = await mount(box());
+    await tick();
+    expect(spy).toHaveBeenCalledTimes(1);
+    m.rerender(box({ destination: { ...FULL, zip: "", address: "285 Cold Spring Rd" } }));
+    await tick();
+    expect(spy).toHaveBeenCalledTimes(1);
+    m.rerender(box({ destination: FULL }));
+    await tick();
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(sentBody(spy, 1)).toMatchObject(FULL);
+    m.cleanup();
+  });
+
+  it("CRITICAL: delivery priced by the mile reads exact - miles, the amount, and no 'from' on the total", async () => {
+    const d = { kind: "delivery", label: "Delivery (41 miles)", addonId: null, quantity: 1, nights: null, unitPriceCents: 29150, amountCents: 29150, miles: 41 };
+    vi.stubGlobal("fetch", vi.fn(async () => reply(withTotal(103273, { lines: [...LINES, d], estimate: false }))));
+    const m = await mount(box({ destination: FULL }));
+    await tick();
+    const row = m.host.querySelector(".q-delivery");
+    expect(row.textContent).toBe("Delivery41 miles, one-way$291.50");
+    expect(m.host.querySelector(".q-total").textContent).toBe("Total$1,032.73");
+    expect(m.host.textContent).not.toMatch(/from \$|confirm the delivery price/);
+    m.cleanup();
+  });
+
+  it("CRITICAL: too far is the server's sentence, word for word", async () => {
+    const sent = ["That address is about 82 miles away which exceeds our delivery radius. Please call us and we can check to see if we have a driver available for an exception."];
+    vi.stubGlobal("fetch", vi.fn(async () => reply({ ok: false, quote: true, errors: sent }, 400)));
+    const m = await mount(box({ destination: FULL }));
+    await tick();
+    expect(m.host.querySelector('[role="alert"]').textContent).toBe(sent[0]);
+    m.cleanup();
+  });
+
+  it("no tax at all: no Subtotal and no '$0' Tax - just the Total", async () => {
+    const lines = LINES.filter((l) => l.kind !== "tax");
+    vi.stubGlobal("fetch", vi.fn(async () => reply({ ...QUOTE_BODY, lines, subtotalCents: 70100, taxCents: 0, totalCents: 70100 })));
+    const m = await mount(box({ method: "pickup" }));
+    await tick();
+    expect(m.host.querySelector(".q-subtotal")).toBeNull();
+    expect(m.host.querySelector(".q-taxsum")).toBeNull();
+    expect(m.host.querySelector(".q-total").textContent).toBe("Total$701");
+    m.cleanup();
   });
 });

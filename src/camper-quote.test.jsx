@@ -61,8 +61,8 @@ describe("one camper page, start to finish", () => {
       const b = JSON.parse(opts.body);
       bodies.push(b);
       return b.quote
-        ? reply({ ok: true, quote: true, lines: LINES, totalCents: 61600, estimate: false })
-        : reply({ ok: true, reservationNum: "WEB-260930-TEST", lines: LINES, totalCents: 61600, estimate: false });
+        ? reply({ ok: true, quote: true, lines: LINES, subtotalCents: 61600, taxCents: 0, totalCents: 61600, estimate: false })
+        : reply({ ok: true, reservationNum: "WEB-260930-TEST", lines: LINES, subtotalCents: 61600, taxCents: 0, totalCents: 61600, estimate: false });
     }));
 
     const host = document.createElement("div");
