@@ -111,8 +111,22 @@ export default function Pay({ leave = toStripe }) {
           <strong>{view.reservationNum}</strong>
         </div>
 
-        <ul className="specs">
-          <li><span className="k">Total</span><span>{view.total}</span></li>
+        {/* b0.16 (CRM v6.09) - what the total is made of, the same items the
+            guest was quoted on the camper page. Only for a website booking;
+            an office or OTA booking shows the Total alone, as before. */}
+        <ul className={view.items.length ? "specs quote-lines pay-items" : "specs"}>
+          {view.items.map((l) => (
+            <li key={l.key} className={`q-${l.kind}`}>
+              <span className="k">
+                {l.label}
+                {l.detail ? <span className="q-detail">{l.detail}</span> : null}
+              </span>
+              <span>{l.amount}</span>
+            </li>
+          ))}
+          {view.subtotal ? <li className="q-subtotal"><span className="k">Subtotal</span><span>{view.subtotal}</span></li> : null}
+          {view.tax ? <li className="q-taxsum"><span className="k">Tax</span><span>{view.tax}</span></li> : null}
+          <li className={view.items.length ? "q-total" : undefined}><span className="k">Total</span><span>{view.total}</span></li>
           {view.paid ? <li><span className="k">Paid so far</span><span>{view.paid}</span></li> : null}
         </ul>
 

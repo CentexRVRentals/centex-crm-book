@@ -4,7 +4,7 @@ import { requestBooking, buildPayload } from "../lib/request.js";
 import { checkDates, todayCentral } from "../lib/dates.js";
 import { QuoteBox } from "./Quote.jsx";
 import { suggestAddresses, suggestionsEnabled, SUGGEST_DEBOUNCE_MS } from "../lib/address.js";
-import { ADDRESS_DEBOUNCE_MS, QUOTE_DEBOUNCE_MS } from "../lib/quote.js";
+import { ADDRESS_DEBOUNCE_MS, ADDRESS_INCOMPLETE, QUOTE_DEBOUNCE_MS, deliveryDestination } from "../lib/quote.js";
 
 // The request form. Name, contact, delivery if wanted, submit.
 //
@@ -99,7 +99,9 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
     const out = [];
     if (guest.name.trim().length < 2) out.push("Please give us a name we can put on the reservation.");
     if (!guest.email.trim() && !guest.phone.trim()) out.push("Please give us an email address or a phone number.");
-    if (delivery.wanted && delivery.address.trim().length < 5) out.push("Please give us the delivery address.");
+    // b0.16 (CRM v6.09) - all four parts, the server's own rule and sentence:
+    // a delivery is priced by the mile, and the miles need the whole address.
+    if (delivery.wanted && !deliveryDestination(delivery)) out.push(ADDRESS_INCOMPLETE);
     // The dates were valid when they were picked. Re-checked because the page
     // may have been open a while.
     const d = checkDates({
@@ -178,9 +180,9 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
                   <label style={{ maxWidth: 90 }}><span>State</span><input value={delivery.state} onChange={setDel("state")} autoComplete="address-level1" /></label>
                   <label style={{ maxWidth: 120 }}><span>ZIP</span><input value={delivery.zip} onChange={setDel("zip")} autoComplete="postal-code" inputMode="numeric" /></label>
                 </div>
-                {/* b0.13 - the quote box below now carries delivery as "from
-                    $minimum - we'll confirm the delivery price" (CRM decision
-                    5). Still no distance calculation on a public page. */}
+                {/* b0.16 - the quote box below prices delivery once all
+                    four parts are filled in (the server measures the drive,
+                    never this page), or says why it cannot. */}
               </>
             ) : null}
           </>

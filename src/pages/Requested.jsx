@@ -42,8 +42,9 @@ export default function Requested() {
 
         {/* b0.13 - the quote the server saved with this request. Only in
             router state: after a refresh it is gone, and the page reads
-            correctly without it. NOT "your price" - the office confirms the
-            total on approval (CRM decision 1), and delivery is a minimum. */}
+            correctly without it. NOT "your price" - the office still approves
+            the request. (b0.16: delivery on it is priced by the mile; there
+            are no minimums any more.) */}
         {state?.quote?.lines?.length ? (
           <div className="panel" style={{ textAlign: "left", marginTop: 16 }}>
             <h3>What we quoted</h3>

@@ -260,12 +260,17 @@ describe("the camper page", () => {
     expect(html()).not.toMatch(/aria-label="Add Kayak"/);
   });
 
-  // b0.14 - delivery is priced by the mile now (CRM v6.05), so the camper
-  // page states the Pricing tab's sentence rather than "from $minimum".
-  it("the delivery sentence is the Pricing tab's own, as written", async () => {
+  // b0.16 (Jesse, 09-24) - "Delivery available within 75 miles." and nothing
+  // about the rate: the quote box prices the drive exactly.
+  it("CRITICAL: the delivery sentence is Jesse's - the radius, and no rate", async () => {
     TABLES = { public_listings: [LISTING], public_listing_photos: [], public_listing_addons: [], public_listing_amenities: [] };
     const { html } = await renderAsync(camperPage("mt1yujz87zxzve"));
-    expect(html()).toContain("Delivery available within 100 miles: $50 for the first 20 miles, then $3 a mile. Add your address when you request and we'll price it.");
+    expect(html()).toContain("Delivery available within 100 miles.");
+    expect(html()).not.toMatch(/for the first|a mile|confirm the delivery price|from \$50/);
+    TABLES = { public_listings: [{ ...LISTING, delivery_miles_max: null }], public_listing_photos: [], public_listing_addons: [], public_listing_amenities: [] };
+    const noMax = await renderAsync(camperPage("mt1yujz87zxzve"));
+    expect(noMax.html()).toContain("Delivery available.");
+    expect(noMax.html()).not.toMatch(/Delivery available within/);
   });
 
   it("CRITICAL: an unknown camper is Not Found, not an error", async () => {

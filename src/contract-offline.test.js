@@ -231,7 +231,10 @@ describe("the contract itself is well formed", () => {
   it("CRITICAL: the quote is declared - what it sends, returns, and what a line is", () => {
     const rb = FUNCTIONS["request-booking"];
     expect(rb.sends).toContain("addons");
-    expect(rb.returns).toEqual(expect.arrayContaining(["lines", "subtotalCents", "taxCents", "totalCents", "estimate"]));
+    expect(rb.returns).toEqual(expect.arrayContaining(["lines", "subtotalCents", "taxCents", "totalCents"]));
+    // b0.16 (CRM v6.09) - no estimates, so no `estimate` anywhere.
+    expect(rb.returns).not.toContain("estimate");
+    expect(rb.quote.returns).not.toContain("estimate");
     expect(rb.quote.sends).toEqual(expect.arrayContaining(["quote", "unitId", "start", "end", "method", "addons", "address", "city", "state", "zip"]));
     expect(rb.quote.returns).toEqual(expect.arrayContaining(["subtotalCents", "taxCents", "totalCents"]));
     // A quote asks about a STAY: no person, no honeypot, no money.
@@ -240,6 +243,15 @@ describe("the contract itself is well formed", () => {
     // No tax rate ever reaches the guest (CRM: publicQuote sends amounts only).
     expect(JSON.stringify(rb.quote)).not.toMatch(/rate/i);
     expect(rb.quote.kinds).toEqual(["rental", "prep", "addon", "delivery", "tax"]);
+  });
+
+  // b0.16 (CRM v6.09) - the pay page's items are part of the contract too.
+  it("CRITICAL: payment-options declares the quote it sends the pay page", () => {
+    const po = FUNCTIONS["payment-options"];
+    expect(po.returns).toContain("quote");
+    expect(po.quote.returns).toEqual(["items", "subtotalCents", "taxCents"]);
+    expect(po.quote.payLine).toEqual(["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents"]);
+    expect(JSON.stringify(po.quote)).not.toMatch(/rate/i);
   });
 
   // b0.14 - the one outside host, declared, and held to the one file.

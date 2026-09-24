@@ -110,14 +110,13 @@ export default function Camper() {
                 5): "from $minimum, confirmed by the office" - a distance
                 calculation needs a geocoder, and the one the CRM has is
                 office-side only. */}
-            {/* b0.14 (CRM v6.05) - the Pricing tab's own sentence, shown as
-                written: the server prices the drive to the guest's address. */}
+            {/* b0.16 (Jesse, 09-24) - "Delivery available within 75 miles."
+                and nothing about the rate: the quote box prices the drive to
+                the guest's address exactly, so the listing does not explain
+                it. No max set: "Delivery available." */}
             {u.deliveryDollarMile ? (
               <p className="card-meta" style={{ marginTop: 12, marginBottom: 0 }}>
-                Delivery available{u.deliveryMilesMax ? ` within ${u.deliveryMilesMax} miles` : ""}
-                {u.deliveryMinimum > 0 && u.deliveryMiles > 0
-                  ? `: ${money(u.deliveryMinimum)} for the first ${u.deliveryMiles} miles, then ${money(u.deliveryDollarMile)} a mile. Add your address when you request and we'll price it.`
-                  : `${u.deliveryMinimum > 0 ? `, from ${money(u.deliveryMinimum)}` : ""} — we'll confirm the delivery price.`}
+                {`Delivery available${u.deliveryMilesMax ? ` within ${u.deliveryMilesMax} miles` : ""}.`}
               </p>
             ) : null}
           </div>

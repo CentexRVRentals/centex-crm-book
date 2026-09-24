@@ -23,6 +23,16 @@ const apiUrl = () => import.meta.env.VITE_SUPABASE_URL;
 export const QUOTE_UNAVAILABLE =
   "We couldn't work out a total just now. You can still send the request — we'll confirm the price.";
 
+// b0.16 (CRM v6.09) - delivery ticked, address not all there yet. No price is
+// asked for: a delivery is priced by the mile or not at all, and the miles
+// need the whole address.
+export const QUOTE_NEEDS_ADDRESS = "Enter your delivery address to see your total.";
+
+// b0.16 - the CRM's own sentence for a part-filled delivery address
+// (_shared/quote.ts ADDRESS_INCOMPLETE), said here too so the form can say it
+// before a round trip. quote.test.jsx holds the two to the same words.
+export const ADDRESS_INCOMPLETE = "Please give us the full delivery address: street, city, state and ZIP.";
+
 // The guest's choices as the server wants them: [{ id, qty }], ALWAYS an
 // array. `selections` is { [addonId]: qty }. Zero, blank and non-numbers are
 // dropped (unticked); required add-ons are not sent - the server puts every
@@ -74,14 +84,41 @@ export function readQuote(body, { requireFlag = true } = {}) {
     subtotalCents: body.subtotalCents,
     taxCents: body.taxCents,
     totalCents: body.totalCents,
-    estimate: body.estimate === true,
   };
+}
+
+// b0.16 (CRM v6.09) - what a pay page's total is made of: { items,
+// subtotalCents, taxCents } for a website booking, or null (an office or OTA
+// booking, a server from before v6.09, or anything that does not add up to a
+// list of whole-cent items - a list that dropped a line is a smaller number
+// than the guest was quoted). The items have the quote box's own shape, so
+// they are worded by the same lineLabel / lineDetail.
+export function readPayQuote(q) {
+  if (!q || typeof q !== "object" || !Array.isArray(q.items) || !q.items.length) return null;
+  if (!Number.isInteger(q.subtotalCents) || !Number.isInteger(q.taxCents)) return null;
+  const kinds = FUNCTIONS["request-booking"].quote.kinds.filter((k) => k !== "tax");
+  const items = [];
+  for (const l of q.items) {
+    if (!l || !kinds.includes(l.kind) || !Number.isInteger(l.amountCents) || l.amountCents < 0) return null;
+    items.push({
+      kind: l.kind,
+      label: typeof l.label === "string" ? l.label : "",
+      addonId: typeof l.addonId === "string" ? l.addonId : null,
+      quantity: Number.isInteger(l.quantity) ? l.quantity : 1,
+      nights: Number.isInteger(l.nights) ? l.nights : null,
+      unitPriceCents: Number.isInteger(l.unitPriceCents) ? l.unitPriceCents : null,
+      amountCents: l.amountCents,
+    });
+  }
+  if (items.reduce((sum, l) => sum + l.amountCents, 0) !== q.subtotalCents) return null;
+  return { items, subtotalCents: q.subtotalCents, taxCents: q.taxCents };
 }
 
 // b0.14 - the delivery address, ONLY when all four parts are there (the same
 // rule the server prices by: a street with no town geocodes somewhere,
-// confidently and wrongly). Anything less sends no address, and the server
-// quotes delivery as "from $minimum".
+// confidently and wrongly). b0.16: anything less and no delivery price is
+// asked for at all (QUOTE_NEEDS_ADDRESS) - the server refuses a delivery with
+// no address rather than quote a minimum.
 export function deliveryDestination(d) {
   const t = (v) => (typeof v === "string" ? v.trim() : "");
   const out = { address: t(d?.address), city: t(d?.city), state: t(d?.state), zip: t(d?.zip) };
@@ -176,31 +213,22 @@ export function lineDetail(line) {
     if (line.nights) parts.push(plural(line.nights, "day", "days"));
     return parts.join(" × ");
   }
-  if (line.kind === "delivery") {
-    // b0.15 (Jesse, 09-24) - priced by distance: no note at all, just the
-    // amount. The miles stay in the quote (the office panel shows them as
-    // "Delivery (41 miles)"); the guest is not shown them. Otherwise the
-    // minimum, which the office confirms.
-    return Number.isInteger(line.miles) ? "" : "We'll confirm the delivery price.";
-  }
+  // b0.15 (Jesse, 09-24) - delivery: no note at all, just the amount. The
+  // miles stay in the quote (the office panel shows "Delivery (41 miles)");
+  // the guest is not shown them. b0.16: every delivery line is a price - there
+  // is no "we'll confirm" any more.
   return "";
 }
 
-// The amount column. A delivery line is the camper's MINIMUM, so it reads
-// "from $X" (CRM decision 5); with no minimum set it is only a promise to
-// confirm, not a "$0".
+// The amount column. b0.16 (CRM v6.09): every line is a price, delivery
+// included - no "from $X", no "to confirm".
 export function lineAmount(line) {
-  if (line.kind === "delivery") {
-    if (Number.isInteger(line.miles)) return cents(line.amountCents);
-    return line.amountCents > 0 ? `from ${cents(line.amountCents)}` : "to confirm";
-  }
   return cents(line.amountCents);
 }
 
-// The total, the server's own. With delivery on it the delivery part is a
-// minimum, so the total is too: "from $X".
+// The total, the server's own. b0.16: never "from $X".
 export function totalAmount(quote) {
-  return quote.estimate ? `from ${cents(quote.totalCents)}` : cents(quote.totalCents);
+  return cents(quote.totalCents);
 }
 
 // b0.14 - the lines a guest is shown: everything but the per-rate tax lines,

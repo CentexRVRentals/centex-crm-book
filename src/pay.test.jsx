@@ -117,8 +117,83 @@ describe("the words", () => {
   });
 
   it("hostile data renders as gaps, not as [object Object] or $0.00", () => {
-    const v = payPageView({ reservationNum: {}, unitName: 7, start: "x", totalCents: "1000", options: "no", security: { cents: 1, date: "no" } });
-    expect(v).toEqual({ reservationNum: "", trip: "", total: "", paid: "", choices: [], security: "" });
+    const v = payPageView({ reservationNum: {}, unitName: 7, start: "x", totalCents: "1000", options: "no", security: { cents: 1, date: "no" }, quote: "no" });
+    expect(v).toEqual({ reservationNum: "", trip: "", total: "", paid: "", choices: [], security: "", items: [], subtotal: "", tax: "" });
+  });
+});
+
+// ============================================================================
+// b0.16 (CRM v6.09) - WHAT THE TOTAL IS MADE OF. payment-options `show` sends
+// a website booking's quote as { items, subtotalCents, taxCents }; the page
+// lists the items, then Subtotal and Tax, then the Total - worded by the quote
+// box's own lineLabel / lineDetail, in this page's own money format.
+// ============================================================================
+describe("b0.16 - the itemised pay page", () => {
+  // Charlie, 3 nights at $129, prep $75, 2 linens, 40 miles; tax 65.76.
+  const QUOTE = {
+    items: [
+      { kind: "rental", label: "Rental", addonId: null, quantity: 1, nights: 3, unitPriceCents: 12900, amountCents: 38700 },
+      { kind: "prep", label: "Prep fee", addonId: null, quantity: 1, nights: null, unitPriceCents: 7500, amountCents: 7500 },
+      { kind: "addon", label: "Linen Package", addonId: "linen", quantity: 2, nights: null, unitPriceCents: 2500, amountCents: 5000 },
+      { kind: "delivery", label: "Delivery (40 miles)", addonId: null, quantity: 1, nights: null, unitPriceCents: 28500, amountCents: 28500 },
+    ],
+    subtotalCents: 79700, taxCents: 6576,
+  };
+  const ITEMISED = { ...PAGE, totalCents: 86276, quote: QUOTE };
+
+  it("CRITICAL: the items, Subtotal and Tax - the quote box's words, this page's money", () => {
+    const v = payPageView(ITEMISED);
+    expect(v.items.map((i) => [i.label, i.detail, i.amount])).toEqual([
+      ["Rental", "$129 × 3 nights", "$387.00"],
+      ["Prep fee", "", "$75.00"],
+      ["Linen Package", "2 × $25", "$50.00"],
+      ["Delivery", "", "$285.00"],
+    ]);
+    expect([v.subtotal, v.tax, v.total]).toEqual(["$797.00", "$65.76", "$862.76"]);
+    // The office's label is not the guest's word; the miles are not shown.
+    expect(JSON.stringify(v.items)).not.toMatch(/miles/);
+  });
+
+  it("CRITICAL: no quote (office or OTA booking, or a server before v6.09) is the page as before", () => {
+    for (const quote of [undefined, null, { items: [] }, { items: [], subtotalCents: 0, taxCents: 500 }]) {
+      const v = payPageView({ ...PAGE, quote });
+      expect([v.items, v.subtotal, v.tax, v.total]).toEqual([[], "", "", "$1,000.00"]);
+    }
+  });
+
+  it("no tax: the items and the Total, no Subtotal and no '$0.00' Tax", () => {
+    const v = payPageView({ ...ITEMISED, quote: { ...QUOTE, taxCents: 0 } });
+    expect(v.items).toHaveLength(4);
+    expect([v.subtotal, v.tax]).toEqual(["", ""]);
+  });
+
+  it("CRITICAL: a list that does not add up to its Subtotal, or has a broken line, is not shown at all", () => {
+    expect(payPageView({ ...ITEMISED, quote: { ...QUOTE, subtotalCents: 79600 } }).items).toEqual([]);
+    const broken = { ...QUOTE, items: [...QUOTE.items.slice(0, 3), { ...QUOTE.items[3], amountCents: "285" }] };
+    expect(payPageView({ ...ITEMISED, quote: broken }).items).toEqual([]);
+    const tax = { ...QUOTE, items: [...QUOTE.items, { kind: "tax", label: "Tax on rental", amountCents: 3193 }], subtotalCents: 79700 + 3193 };
+    expect(payPageView({ ...ITEMISED, quote: tax }).items).toEqual([]);
+  });
+
+  it("CRITICAL: rendered - the items above the Total, and the choices unchanged", async () => {
+    fetchMock.mockResolvedValue(answer(200, ITEMISED));
+    const m = await mountPay();
+    const rows = [...m.host.querySelectorAll(".pay-items li")].map((li) => li.textContent);
+    expect(rows).toEqual([
+      "Rental$129 × 3 nights$387.00", "Prep fee$75.00", "Linen Package2 × $25$50.00", "Delivery$285.00",
+      "Subtotal$797.00", "Tax$65.76", "Total$862.76",
+    ]);
+    expect(m.host.textContent).toContain("Reservation Deposit");
+    expect(m.host.textContent).not.toMatch(/from \$|to confirm/);
+    m.cleanup();
+  });
+
+  it("an office booking renders exactly as before - the Total alone", async () => {
+    fetchMock.mockResolvedValue(answer(200, PAGE));
+    const m = await mountPay();
+    expect(m.host.querySelector(".pay-items")).toBeNull();
+    expect([...m.host.querySelectorAll(".specs li")].map((li) => li.textContent)).toEqual(["Total$1,000.00"]);
+    m.cleanup();
   });
 });
 

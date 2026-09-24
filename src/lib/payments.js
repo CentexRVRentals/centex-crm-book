@@ -29,6 +29,8 @@
 // carries our `error` sentence is shown, and only a 401 WITHOUT one (the
 // gateway's, not ours) is treated as a deployment mistake.
 
+import { lineDetail, lineLabel, readPayQuote } from "./quote.js";
+
 const apiUrl = () => import.meta.env.VITE_SUPABASE_URL;
 
 const OFFLINE = "We couldn't reach us just then. Check your connection and try again.";
@@ -118,6 +120,29 @@ export function shortDate(iso) {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
 }
 
+// b0.16 (CRM v6.09) - what the total is made of, for a website booking: the
+// items the guest was quoted, then Subtotal and Tax, worded by the SAME
+// lineLabel / lineDetail as the quote box and /requested. Amounts are in this
+// page's own format (usd, always cents), so every figure on the page reads
+// alike. No quote (office or OTA booking, or a server from before v6.09): no
+// items, and the page shows the total alone, as before. No tax: no Subtotal
+// or Tax rows either - there is nothing to split.
+function payItems(raw) {
+  const q = readPayQuote(raw);
+  if (!q) return { items: [], subtotal: "", tax: "" };
+  return {
+    items: q.items.map((l, i) => ({
+      key: `${l.kind}-${l.addonId || ""}-${i}`,
+      kind: l.kind,
+      label: lineLabel(l),
+      detail: lineDetail(l),
+      amount: usd(l.amountCents),
+    })),
+    subtotal: q.taxCents > 0 ? usd(q.subtotalCents) : "",
+    tax: q.taxCents > 0 ? usd(q.taxCents) : "",
+  };
+}
+
 // The page as sentences. `words` comes from the server (balanceVerb,
 // securityVerb) so the day the CRM's charger ships, the page stops saying
 // "is due" and starts saying what really happens without a release here.
@@ -170,6 +195,7 @@ export function payPageView(page) {
   return {
     reservationNum: typeof p.reservationNum === "string" ? p.reservationNum : "",
     trip: [typeof p.unitName === "string" ? p.unitName : "", dates].filter(Boolean).join(" · "),
+    ...payItems(p.quote),
     total: usd(p.totalCents),
     paid: Number.isInteger(p.paidCents) && p.paidCents > 0 ? usd(p.paidCents) : "",
     choices,

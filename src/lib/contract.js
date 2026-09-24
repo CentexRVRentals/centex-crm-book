@@ -123,7 +123,10 @@ export const FUNCTIONS = {
     // `lines`, `totalCents`, `estimate` - which /requested shows.
     //
     // b0.14 (CRM v6.05): + subtotalCents and taxCents - Subtotal / Tax / Total.
-    returns: ["ok", "reservationNum", "errors", "duplicate", "lines", "subtotalCents", "taxCents", "totalCents", "estimate"],
+    //
+    // b0.16 (CRM v6.09): - `estimate`. There are no estimates: a delivery is
+    // priced by the mile or refused, in one of Jesse's sentences.
+    returns: ["ok", "reservationNum", "errors", "duplicate", "lines", "subtotalCents", "taxCents", "totalCents"],
 
     // b0.13 - THE LIVE QUOTE. The same function with `quote: true`: the camper,
     // dates, method and add-ons are checked exactly as a request checks them,
@@ -141,10 +144,18 @@ export const FUNCTIONS = {
     // parts, or none) and is then priced BY THE MILE - the delivery line gets
     // `miles` and `estimate` goes false. Too far is a refusal in Jesse's
     // words. `subtotalCents + taxCents = totalCents`; the page shows those three
-    // and not the per-rate tax lines, which are still sent.
+    // and not the per-rate tax lines.
+    //
+    // b0.16 (CRM v6.09, Jesse 09-24): NO ESTIMATES. "If a guest can't enter an
+    // address that's in the Mapbox database then it won't be delivered." A
+    // delivery quote is asked for only with all four address parts, and is
+    // priced by the mile or REFUSED ("That address is unavailable..." or "We're
+    // having trouble pricing delivery right now..."). `estimate` is gone, and
+    // the per-rate tax lines are no longer sent. `tax` stays a known kind: this
+    // site deploys BEFORE v6.09, and v6.08 still sends them (they are skipped).
     quote: {
       sends: ["quote", "unitId", "start", "end", "method", "addons", "address", "city", "state", "zip"],
-      returns: ["ok", "quote", "lines", "subtotalCents", "taxCents", "totalCents", "estimate", "errors"],
+      returns: ["ok", "quote", "lines", "subtotalCents", "taxCents", "totalCents", "errors"],
       line: ["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents", "miles"],
       kinds: ["rental", "prep", "addon", "delivery", "tax"],
     },
@@ -159,10 +170,19 @@ export const FUNCTIONS = {
     // `option` is a WORD (deposit | full | balance), never an amount — the
     // server re-derives what to charge at the moment of choosing.
     sends: ["action", "token", "option"],
+    // b0.16 (CRM v6.09): + `quote` - what the total is made of, for a website
+    // booking: { items, subtotalCents, taxCents }, each item a quote line
+    // (quote.payLine below, the quote box's own shape less miles). null for an
+    // office or OTA booking, which has no lines; the page then shows the total
+    // alone, as before. Absent from a v6.08 server - the same as null.
     returns: [
       "reservationNum", "unitName", "start", "end", "totalCents", "paidCents", "owedCents",
-      "insideWindow", "windowDays", "options", "security", "words", "url", "error",
+      "insideWindow", "windowDays", "options", "security", "words", "quote", "url", "error",
     ],
+    quote: {
+      returns: ["items", "subtotalCents", "taxCents"],
+      payLine: ["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents"],
+    },
     // How `npm run contract` checks it is deployed without creating anything:
     // a token that cannot verify must come back 401 WITH the server's own
     // sentence. The gateway's 401 (no --no-verify-jwt) carries no `error`.

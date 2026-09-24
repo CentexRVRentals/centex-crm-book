@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   quoteBooking, lineLabel, lineDetail, lineAmount, totalAmount, itemLines, cents, deliveryDestination,
-  QUOTE_UNAVAILABLE, QUOTE_DEBOUNCE_MS,
+  QUOTE_UNAVAILABLE, QUOTE_NEEDS_ADDRESS, QUOTE_DEBOUNCE_MS,
 } from "../lib/quote.js";
 
 // b0.13 — the quote, shown. QuoteBox asks; QuoteLines words the answer and is
@@ -22,6 +22,10 @@ import {
 // b0.14 - `destination` is the delivery address as typed; it joins the request
 // (and the key) only when it is complete and delivery is chosen, so typing a
 // street does not re-ask on every letter.
+//
+// b0.16 (CRM v6.09) - and with delivery ticked, NOTHING is asked until the
+// address is complete: a delivery is priced by the mile or refused, so a half
+// address has no price to show. The box says to finish it instead.
 export function QuoteBox({ unitId, dates, method, addons, destination = null, ready, inForm = false, debounceMs = QUOTE_DEBOUNCE_MS }) {
   const dest = method === "delivery" ? deliveryDestination(destination) : null;
   const key = JSON.stringify({ unitId, start: dates.start, end: dates.end, method, addons, destination: dest });
@@ -29,9 +33,11 @@ export function QuoteBox({ unitId, dates, method, addons, destination = null, re
   // The last good quote, shown dimmed while a new one is on its way, so the
   // box does not flash empty on every tick of a quantity.
   const [lastQuote, setLastQuote] = useState(null);
+  const needsAddress = method === "delivery" && !dest;
+  const asking = ready && !needsAddress;
 
   useEffect(() => {
-    if (!ready) return undefined;
+    if (!asking) return undefined;
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
       let result;
@@ -47,15 +53,17 @@ export function QuoteBox({ unitId, dates, method, addons, destination = null, re
       if (result.ok) setLastQuote(result.quote);
     }, debounceMs);
     return () => { clearTimeout(timer); ctrl.abort(); };
-  }, [key, ready, debounceMs]);
+  }, [key, asking, debounceMs]);
 
   if (!ready) return null;
   const current = answer.key === key ? answer.result : null;
 
   return (
-    <div className={inForm ? "quote in-form" : "panel quote"} aria-live="polite" aria-busy={current ? "false" : "true"}>
+    <div className={inForm ? "quote in-form" : "panel quote"} aria-live="polite" aria-busy={needsAddress || current ? "false" : "true"}>
       <h3>Your total</h3>
-      {!current ? (
+      {needsAddress ? (
+        <p className="card-meta q-needs-address" style={{ margin: 0 }}>{QUOTE_NEEDS_ADDRESS}</p>
+      ) : !current ? (
         lastQuote ? (
           <div className="quote-stale">
             <QuoteLines quote={lastQuote} />
@@ -104,8 +112,6 @@ export function QuoteLines({ quote }) {
       {taxed ? (
         <li className="q-subtotal">
           <span className="k">Subtotal</span>
-          {/* "from" belongs on the delivery line and the Total, where the
-              guest reads it; saying it three times reads as a hedge. */}
           <span>{cents(quote.subtotalCents)}</span>
         </li>
       ) : null}

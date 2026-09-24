@@ -23,7 +23,7 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 import {
   addonsPayload, readQuote, quoteBooking, cents, lineDetail, lineAmount, totalAmount, deliveryDestination,
-  QUOTE_UNAVAILABLE, QUOTE_DEBOUNCE_MS, ADDRESS_DEBOUNCE_MS,
+  QUOTE_UNAVAILABLE, QUOTE_DEBOUNCE_MS, ADDRESS_DEBOUNCE_MS, QUOTE_NEEDS_ADDRESS, ADDRESS_INCOMPLETE, readPayQuote,
 } from "./lib/quote.js";
 import { buildPayload, requestBooking } from "./lib/request.js";
 import { FUNCTIONS } from "./lib/contract.js";
@@ -51,7 +51,7 @@ const SERVER_TOTAL = 74123;
 // show 70,526 because that is what it was sent.
 const SERVER_TAX = 3597;
 const SERVER_SUBTOTAL = SERVER_TOTAL - SERVER_TAX;
-const QUOTE_BODY = { ok: true, quote: true, lines: LINES, subtotalCents: SERVER_SUBTOTAL, taxCents: SERVER_TAX, totalCents: SERVER_TOTAL, estimate: false };
+const QUOTE_BODY = { ok: true, quote: true, lines: LINES, subtotalCents: SERVER_SUBTOTAL, taxCents: SERVER_TAX, totalCents: SERVER_TOTAL };
 
 const ADDONS = [
   { addonId: "prep", name: "Prep kit", price: 40, daily: false, required: true, maxQuantity: 1 },
@@ -215,14 +215,26 @@ describe("the words", () => {
     expect(lineDetail({ ...LINES[0], nights: 1 })).toBe("$109 × 1 night");
   });
 
-  it("CRITICAL: delivery is 'from $minimum', confirmed by the office (CRM decision 5)", () => {
-    const d = { kind: "delivery", label: "Delivery (from - the office confirms the distance)", addonId: null, quantity: 1, nights: null, unitPriceCents: 7500, amountCents: 7500 };
-    expect(lineAmount(d)).toBe("from $75");
-    expect(lineDetail(d)).toBe("We'll confirm the delivery price.");
-    // No minimum set: a promise to confirm, never "$0".
-    expect(lineAmount({ ...d, amountCents: 0 })).toBe("to confirm");
-    expect(totalAmount({ totalCents: 50000, estimate: true })).toBe("from $500");
-    expect(totalAmount({ totalCents: 50000, estimate: false })).toBe("$500");
+  // b0.16 (CRM v6.09, Jesse 09-24) - NO ESTIMATES: a delivery on a quote is
+  // priced by the mile, so it and the total read as prices. No "from", no
+  // "to confirm" - even if an older server still says `estimate`.
+  it("CRITICAL: delivery and the total are prices - never 'from $X', never 'to confirm'", () => {
+    const d = { kind: "delivery", label: "Delivery (40 miles)", addonId: null, quantity: 1, nights: null, unitPriceCents: 28500, amountCents: 28500, miles: 40 };
+    expect(lineAmount(d)).toBe("$285");
+    expect(lineDetail(d)).toBe("");
+    expect(lineAmount({ ...d, miles: null })).toBe("$285");
+    expect(lineDetail({ ...d, miles: null })).toBe("");
+    expect(totalAmount({ totalCents: 50000, estimate: true })).toBe("$500");
+    expect(totalAmount({ totalCents: 50000 })).toBe("$500");
+    const src = fs.readFileSync(path.join(process.cwd(), "src", "lib", "quote.js"), "utf8");
+    const code = src.split(/\r?\n/).filter((l) => !/^\s*\/\//.test(l)).join("\n");
+    expect(code).not.toMatch(/`from \$|to confirm|confirm the delivery price|estimate/);
+  });
+
+  it("CRITICAL: the part-filled-address sentence is the CRM's own, word for word", () => {
+    // _shared/quote.ts ADDRESS_INCOMPLETE (CRM v6.09).
+    expect(ADDRESS_INCOMPLETE).toBe("Please give us the full delivery address: street, city, state and ZIP.");
+    expect(QUOTE_NEEDS_ADDRESS).toBe("Enter your delivery address to see your total.");
   });
 });
 
@@ -394,20 +406,32 @@ describe("the quote box", () => {
     m.cleanup();
   });
 
-  it("CRITICAL: delivery reads 'from $X - we'll confirm the delivery price', and so does the total", async () => {
-    const delivery = { kind: "delivery", label: "Delivery (from - the office confirms the distance)", addonId: null, quantity: 1, nights: null, unitPriceCents: 7500, amountCents: 7500 };
-    const spy = vi.fn(async () => reply(withTotal(81623, { lines: [...LINES, delivery], estimate: true })));
+  // b0.16 (CRM v6.09) - delivery with no address: nothing is asked, and the
+  // box says what it needs. A delivery is priced by the mile or not at all.
+  it("CRITICAL: delivery with no address asks for nothing and says to finish the address", async () => {
+    const spy = vi.fn(async () => reply(QUOTE_BODY));
     vi.stubGlobal("fetch", spy);
     const m = await mount(box({ method: "delivery" }));
-    await tick();
-    const t = m.host.textContent;
-    expect(sentBody(spy).method).toBe("delivery");
-    expect(t).toContain("from $75");
-    expect(t).toContain("We'll confirm the delivery price.");
-    expect(t).toContain("from $816.23");
-    // The server's own label is office wording; the page says it for the guest.
-    expect(t).not.toContain("office confirms the distance");
+    await tick(ADDRESS_DEBOUNCE_MS);
+    expect(spy).not.toHaveBeenCalled();
+    expect(m.host.textContent).toContain(QUOTE_NEEDS_ADDRESS);
+    expect(m.host.textContent).not.toMatch(/\$|Working out/);
+    expect(m.host.querySelector(".quote").getAttribute("aria-busy")).toBe("false");
     m.cleanup();
+  });
+
+  it("CRITICAL: Jesse's two delivery refusals are shown word for word", async () => {
+    const FULL = { address: "285 Cold Spring", city: "Buda", state: "TX", zip: "78610" };
+    for (const sent of [
+      "That address is unavailable. Please check the address again or select pickup instead",
+      "We're having trouble pricing delivery right now. Please choose pickup and contact us with the delivery address so we can update your reservation manually.",
+    ]) {
+      vi.stubGlobal("fetch", vi.fn(async () => reply({ ok: false, quote: true, errors: [sent] }, 400)));
+      const m = await mount(box({ method: "delivery", destination: FULL }));
+      await tick(ADDRESS_DEBOUNCE_MS);
+      expect(m.host.querySelector('[role="alert"]').textContent).toBe(sent);
+      m.cleanup();
+    }
   });
 
   it("CRITICAL: no word about fees the server did not name (CRM decision 4)", async () => {
@@ -438,12 +462,50 @@ describe("the request form prices what it sends", () => {
     expect(sentBody(spy, 0)).toMatchObject({ quote: true, method: "pickup", addons: [{ id: "gen", qty: 1 }] });
     expect(m.host.textContent).toContain("$741.23");
     act(() => { m.host.querySelector('input[type="checkbox"]').click(); });
-    // b0.14 - with delivery ticked the box waits longer (an address may be
-    // being typed, and every complete one is a distance lookup).
+    // b0.16 - delivery ticked, no address yet: the pick-up total goes, nothing
+    // is asked, and the box says to finish the address.
+    await tick(ADDRESS_DEBOUNCE_MS);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(m.host.textContent).toContain(QUOTE_NEEDS_ADDRESS);
+    expect(m.host.textContent).not.toContain("$741.23");
+    // The whole address: now it asks, for delivery, with the address - after
+    // the longer wait (every complete one is a distance lookup).
+    const setVal = (label, v) => {
+      const input = [...m.host.querySelectorAll("label")].find((l) => l.textContent.startsWith(label)).querySelector("input");
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+      act(() => { setter.call(input, v); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    };
+    setVal("Delivery address", "285 Cold Spring");
+    setVal("City", "Buda");
+    setVal("State", "TX");
+    setVal("ZIP", "78610");
     await tick(QUOTE_DEBOUNCE_MS);
     expect(spy).toHaveBeenCalledTimes(1);
     await tick(ADDRESS_DEBOUNCE_MS - QUOTE_DEBOUNCE_MS);
-    expect(sentBody(spy, 1).method).toBe("delivery");
+    expect(sentBody(spy, 1)).toMatchObject({ method: "delivery", address: "285 Cold Spring", city: "Buda", state: "TX", zip: "78610" });
+    m.cleanup();
+  });
+
+  it("CRITICAL: Send request with delivery and a part-filled address is stopped here, in the CRM's words", async () => {
+    const spy = vi.fn(async () => reply(QUOTE_BODY));
+    vi.stubGlobal("fetch", spy);
+    const m = await mount(form([]));
+    await tick();
+    const setVal = (label, v) => {
+      const input = [...m.host.querySelectorAll("label")].find((l) => l.textContent.startsWith(label)).querySelector("input");
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+      act(() => { setter.call(input, v); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    };
+    setVal("Your name", "Jane Doe");
+    setVal("Email", "jane@example.com");
+    act(() => { m.host.querySelector('input[type="checkbox"]').click(); });
+    setVal("Delivery address", "285 Cold Spring");
+    const calls = spy.mock.calls.length;
+    const send = [...m.host.querySelectorAll("button")].find((b) => b.textContent === "Send request");
+    act(() => { send.click(); });
+    await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    expect(m.host.querySelector('[role="alert"]').textContent).toContain(ADDRESS_INCOMPLETE);
+    expect(spy.mock.calls.slice(calls).some(([, o]) => !JSON.parse(o.body).quote)).toBe(false);
     m.cleanup();
   });
 
@@ -585,25 +647,25 @@ describe("b0.14 - the box", () => {
   const box = (over = {}) => <QuoteBox unitId="u1" dates={DATES} method="delivery" addons={[]} ready destination={{ ...FULL, zip: "" }} {...over} />;
   beforeEach(() => { vi.useFakeTimers(); });
 
-  it("CRITICAL: typing an incomplete address does not re-ask; completing it does", async () => {
+  it("CRITICAL: an incomplete address asks nothing (b0.16); completing it does", async () => {
     const spy = vi.fn(async () => reply(QUOTE_BODY));
     vi.stubGlobal("fetch", spy);
     const m = await mount(box());
     await tick();
-    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledTimes(0);
     m.rerender(box({ destination: { ...FULL, zip: "", address: "285 Cold Spring Rd" } }));
     await tick();
-    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledTimes(0);
     m.rerender(box({ destination: FULL }));
     await tick();
-    expect(spy).toHaveBeenCalledTimes(2);
-    expect(sentBody(spy, 1)).toMatchObject(FULL);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(sentBody(spy, 0)).toMatchObject(FULL);
     m.cleanup();
   });
 
   it("CRITICAL: delivery priced by the mile reads exact - miles, the amount, and no 'from' on the total", async () => {
     const d = { kind: "delivery", label: "Delivery (41 miles)", addonId: null, quantity: 1, nights: null, unitPriceCents: 29150, amountCents: 29150, miles: 41 };
-    vi.stubGlobal("fetch", vi.fn(async () => reply(withTotal(103273, { lines: [...LINES, d], estimate: false }))));
+    vi.stubGlobal("fetch", vi.fn(async () => reply(withTotal(103273, { lines: [...LINES, d] }))));
     const m = await mount(box({ destination: FULL }));
     await tick();
     const row = m.host.querySelector(".q-delivery");
