@@ -607,7 +607,11 @@ describe("b0.14 - the box", () => {
     const m = await mount(box({ destination: FULL }));
     await tick();
     const row = m.host.querySelector(".q-delivery");
-    expect(row.textContent).toBe("Delivery41 miles, one-way$291.50");
+    // b0.15 re-pointed (Jesse, 09-24): "can we remove the message x miles, one
+    // way?" - the exact line is the word and the amount, nothing under it.
+    expect(row.textContent).toBe("Delivery$291.50");
+    expect(row.querySelector(".q-detail")).toBeNull();
+    expect(m.host.textContent).not.toMatch(/\bmiles?\b|one-way/);
     expect(m.host.querySelector(".q-total").textContent).toBe("Total$1,032.73");
     expect(m.host.textContent).not.toMatch(/from \$|confirm the delivery price/);
     m.cleanup();

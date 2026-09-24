@@ -177,9 +177,11 @@ export function lineDetail(line) {
     return parts.join(" × ");
   }
   if (line.kind === "delivery") {
-    // b0.14 - priced by distance (CRM v6.05): the miles it was priced for.
-    // Otherwise the minimum, which the office confirms.
-    return Number.isInteger(line.miles) ? `${plural(line.miles, "mile", "miles")}, one-way` : "We'll confirm the delivery price.";
+    // b0.15 (Jesse, 09-24) - priced by distance: no note at all, just the
+    // amount. The miles stay in the quote (the office panel shows them as
+    // "Delivery (41 miles)"); the guest is not shown them. Otherwise the
+    // minimum, which the office confirms.
+    return Number.isInteger(line.miles) ? "" : "We'll confirm the delivery price.";
   }
   return "";
 }
