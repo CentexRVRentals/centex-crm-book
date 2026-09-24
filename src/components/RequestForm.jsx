@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { requestBooking, buildPayload } from "../lib/request.js";
 import { checkDates, todayCentral } from "../lib/dates.js";
+import { QuoteBox } from "./Quote.jsx";
 
 // The request form. Name, contact, delivery if wanted, submit.
 //
@@ -16,7 +17,11 @@ import { checkDates, todayCentral } from "../lib/dates.js";
 // have gone in that hour. The server checks too; this is so the guest hears it
 // from the page rather than from a refusal.
 
-export default function RequestForm({ listing, busy, dates, onCancel }) {
+// b0.13 - `addons` is the guest's choices as the server wants them
+// ([{ id, qty }], from addonsPayload on the camper page). The form sends them
+// and shows the live total above the send button, priced for pickup or
+// delivery as the box below is ticked.
+export default function RequestForm({ listing, busy, dates, addons = [], onCancel }) {
   const nav = useNavigate();
   const [guest, setGuest] = useState({
     name: "", email: "", phone: "", guests: "", notes: "", company: "",
@@ -46,7 +51,7 @@ export default function RequestForm({ listing, busy, dates, onCancel }) {
     setBusy(true);
     setErrors([]);
     const result = await requestBooking(
-      buildPayload({ unitId: listing.unitId, dates, guest, delivery })
+      buildPayload({ unitId: listing.unitId, dates, guest, delivery, addons })
     );
     setBusy(false);
 
@@ -55,7 +60,11 @@ export default function RequestForm({ listing, busy, dates, onCancel }) {
       return;
     }
     nav(`/requested/${encodeURIComponent(result.reservationNum)}`, {
-      state: { camper: listing.name, start: dates.start, end: dates.end, duplicate: result.duplicate },
+      state: {
+        camper: listing.name, start: dates.start, end: dates.end, duplicate: result.duplicate,
+        // b0.13 - the quote the server SAVED with the hold, shown on /requested.
+        quote: result.quote || null,
+      },
     });
   }
 
@@ -130,12 +139,9 @@ export default function RequestForm({ listing, busy, dates, onCancel }) {
                   <label style={{ maxWidth: 90 }}><span>State</span><input value={delivery.state} onChange={setDel("state")} autoComplete="address-level1" /></label>
                   <label style={{ maxWidth: 120 }}><span>ZIP</span><input value={delivery.zip} onChange={setDel("zip")} autoComplete="postal-code" inputMode="numeric" /></label>
                 </div>
-                {/* NOT QUOTED HERE, deliberately. The office works the fee out
-                    at approval; a distance calculation on a public page would
-                    be a second opinion about money. */}
-                <p className="card-meta" style={{ marginTop: -4 }}>
-                  We'll work out the delivery fee and include it when we come back to you.
-                </p>
+                {/* b0.13 - the quote box below now carries delivery as "from
+                    $minimum - we'll confirm the delivery price" (CRM decision
+                    5). Still no distance calculation on a public page. */}
               </>
             ) : null}
           </>
@@ -161,6 +167,18 @@ export default function RequestForm({ listing, busy, dates, onCancel }) {
           </label>
         </div>
       </div>
+
+      <QuoteBox
+        unitId={listing.unitId}
+        dates={dates}
+        method={delivery.wanted ? "delivery" : "pickup"}
+        addons={addons}
+        inForm
+        ready={checkDates({
+          start: dates.start, end: dates.end, busy,
+          minimumNights: listing.minimumNights, today: todayCentral(),
+        }).ok}
+      />
 
       {errors.length ? (
         <ul className="cal-errors" role="alert" style={{ marginTop: 12 }}>

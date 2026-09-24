@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import {
   isIsoDate, nightsBetween, addDays, overlapsBusy, busyDaySet,
-  checkDates, estimate, monthGrid, todayCentral,
+  checkDates, monthGrid, todayCentral,
   MAX_NIGHTS, MAX_ADVANCE_DAYS,
 } from "./lib/dates.js";
 
@@ -141,19 +141,17 @@ describe("the verdict", () => {
   });
 });
 
-describe("the estimate is an estimate", () => {
-  it("nightly rate plus prep fee, and nothing else", () => {
-    // No tax, no insurance, no delivery, no add-ons. A number a guest reads as
-    // final and is then charged differently is worse than no number.
-    const q = estimate({ pricePerNight: 119, prepFee: 75, nights: 4 });
-    expect(q.subtotal).toBe(476);
-    expect(q.total).toBe(551);
-  });
-
-  it("no quote without a rate or nights", () => {
-    expect(estimate({ pricePerNight: 0, nights: 4 })).toBeNull();
-    expect(estimate({ pricePerNight: 119, nights: 0 })).toBeNull();
-    expect(estimate({ pricePerNight: "junk", nights: "junk" })).toBeNull();
+// b0.13 - "the estimate is an estimate" RETIRED with estimate() itself. The
+// server prices the stay now (quote.test.jsx); what replaces these two tests
+// is the rule that this site does no arithmetic on money:
+describe("the calendar prices nothing (b0.13)", () => {
+  it("CRITICAL: dates.js and the date picker carry no price arithmetic", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const dates = await import("./lib/dates.js");
+    expect(dates).not.toHaveProperty("estimate");
+    const picker = fs.readFileSync(path.join(process.cwd(), "src/components/DatePicker.jsx"), "utf8");
+    expect(picker).not.toMatch(/money\(|pricePerNight|Estimate/);
   });
 });
 

@@ -25,6 +25,15 @@
 // WHY dryRun. Without it every case in the corpus would leave a held booking
 // behind, and the corpus is deliberately large.
 //
+// b0.13 — A DRY RUN NOW PRICES TOO (CRM v6.03). A camper the server cannot
+// price - no nightly rate, or a REQUIRED add-on with no price - is refused on
+// every date, which this file would have reported as a wall of date
+// "disagreements". So each camper is priced first, on a clear week far out,
+// with `{ quote: true }`; the ones that cannot be priced are NAMED as a CRM
+// data problem and skipped, and the dates are compared on the busiest camper
+// that can be. Pricing is not what this file checks - the CRM's quote.test.js
+// is - but it must not hide behind a date report.
+//
 // WHAT IT CANNOT CATCH. A rule that is wrong in the SAME way on both sides.
 // dates.test.jsx is what tests the rules against what they should be; this
 // tests them against each other. Neither replaces the other.
@@ -100,9 +109,48 @@ for (const b of allBusy) {
   arr.push({ from: b.busy_from, through: b.busy_through });
   busyByUnit.set(b.unit_id, arr);
 }
-const unit = listings
+// b0.13 - priced first; see the top of this file.
+const clearFrom = addDays(todayCentral(), 200);
+async function priceProblem(u) {
+  const nights = Math.max(1, Number(u.minimum_nights) || 1) + 1;
+  const res = await fetch(`${url}/functions/v1/request-booking`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quote: true, unitId: u.unit_id, start: clearFrom, end: addDays(clearFrom, nights), method: "pickup", addons: [] }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (body.quote !== true) {
+    throw new Error(
+      `request-booking did not answer quote:true (got ${JSON.stringify(body).slice(0, 160)}). ` +
+      "Deploy CRM v6.03 before running this."
+    );
+  }
+  return body.ok === true ? "" : (body.errors || ["refused, no reason given"])[0];
+}
+const byBusiest = listings
   .slice()
-  .sort((a, b) => (busyByUnit.get(b.unit_id)?.length || 0) - (busyByUnit.get(a.unit_id)?.length || 0))[0];
+  .sort((a, b) => (busyByUnit.get(b.unit_id)?.length || 0) - (busyByUnit.get(a.unit_id)?.length || 0));
+let unit = null;
+const unpriceable = [];
+for (const u of byBusiest) {
+  let problem;
+  try {
+    problem = await priceProblem(u);
+  } catch (err) {
+    console.log(`\n  ${red("STOP")}  ${err.message}\n`);
+    process.exit(1);
+  }
+  if (!problem) { unit = unit || u; continue; }
+  unpriceable.push({ u, problem });
+}
+if (unpriceable.length) {
+  console.log(`\n  ${red("CANNOT BE PRICED")} — every request for these is refused. Fix in the CRM (Pricing / Add ons tab):`);
+  for (const { u, problem } of unpriceable) console.log(`        ${u.name} (${u.unit_id}): ${problem}`);
+}
+if (!unit) {
+  console.error("\n  No listed camper can be priced — nothing to compare dates against.\n");
+  process.exit(1);
+}
 const busy = busyByUnit.get(unit.unit_id) || [];
 
 console.log(`\n  Conformance: this repo's rules vs the live request-booking`);
@@ -207,3 +255,9 @@ if (disagreements) {
   process.exit(1);
 }
 console.log(`  ${green(`All ${checked} cases agree.`)}\n`);
+// A camper that cannot be priced is a failed run even when the dates agree:
+// the site lists it, and every request for it is refused.
+if (unpriceable.length) {
+  console.log(`  ${red(`But ${unpriceable.length} camper(s) cannot be priced`)} — named at the top. Not a date problem.\n`);
+  process.exit(1);
+}

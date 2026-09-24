@@ -1,4 +1,5 @@
 import { FUNCTIONS } from "./contract.js";
+import { readQuote } from "./quote.js";
 
 // THE ONLY WRITE THIS SITE MAKES.
 //
@@ -9,7 +10,9 @@ import { FUNCTIONS } from "./contract.js";
 //
 // WHAT COMES BACK, and why this module hands it on almost untouched:
 //
-//   { ok: true,  reservationNum }            a hold was created
+//   { ok: true,  reservationNum, quote }     a hold was created (b0.13: with
+//                                            the quote the server saved, or
+//                                            null if it sent none)
 //   { ok: true,  duplicate: true, ... }      the same request twice — one hold
 //   { ok: false, errors: [ "..." ] }         refused, with sentences to SHOW
 //
@@ -76,7 +79,15 @@ export async function requestBooking(payload) {
   }
 
   if (body.ok === true) {
-    return { ok: true, reservationNum: body.reservationNum || "", duplicate: body.duplicate === true };
+    // b0.13 - the quote the server SAVED with the hold (CRM v6.03). A
+    // duplicate answers without one: the first request's quote is the one on
+    // the booking, and this site does not have it.
+    return {
+      ok: true,
+      reservationNum: body.reservationNum || "",
+      duplicate: body.duplicate === true,
+      quote: readQuote(body, { requireFlag: false }),
+    };
   }
 
   // Errors SHOWN AS SENT. If the server ever answers ok:false with no errors,
@@ -95,7 +106,12 @@ export async function requestBooking(payload) {
 // site stopped sending the field, the form would lose its cheapest defence and
 // nothing else would notice. The contract lists it for that reason, and an
 // offline guard asserts it is still there.
-export function buildPayload({ unitId, dates, guest, delivery }) {
+//
+// b0.13 - `addons` is ALWAYS an array ([] for none), built by addonsPayload.
+// It must never go through the blank-fill below: the server refuses
+// `addons: ""` as malformed ("We couldn't read the add-ons..."), so a guest
+// who picked nothing would have been refused outright.
+export function buildPayload({ unitId, dates, guest, delivery, addons }) {
   const wants = FUNCTIONS["request-booking"].sends;
   const payload = {
     unitId,
@@ -112,6 +128,7 @@ export function buildPayload({ unitId, dates, guest, delivery }) {
     state: delivery.wanted ? delivery.state : "",
     zip: delivery.wanted ? delivery.zip : "",
     company: guest.company || "",
+    addons: Array.isArray(addons) ? addons : [],
   };
   // Every field the contract says this endpoint accepts is present, even when
   // blank. A missing key and an empty one are the same to the server, but a

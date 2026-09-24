@@ -1,5 +1,6 @@
 import React from "react";
 import { Link, useParams, useLocation } from "react-router-dom";
+import { QuoteLines } from "../components/Quote.jsx";
 
 // After a request lands. Its own URL so it survives a refresh and can be sent
 // to somebody — a confirmation that vanishes on reload is a confirmation the
@@ -37,6 +38,20 @@ export default function Requested() {
           <p className="card-meta">
             {state.camper}{state.start && state.end ? ` · ${state.start} to ${state.end}` : ""}
           </p>
+        ) : null}
+
+        {/* b0.13 - the quote the server saved with this request. Only in
+            router state: after a refresh it is gone, and the page reads
+            correctly without it. NOT "your price" - the office confirms the
+            total on approval (CRM decision 1), and delivery is a minimum. */}
+        {state?.quote?.lines?.length ? (
+          <div className="panel" style={{ textAlign: "left", marginTop: 16 }}>
+            <h3>What we quoted</h3>
+            <QuoteLines quote={state.quote} />
+            <p className="card-meta" style={{ margin: "8px 0 0" }}>
+              We'll confirm the price when we come back to you. Nothing has been charged.
+            </p>
+          </div>
         ) : null}
 
         {state?.duplicate ? (

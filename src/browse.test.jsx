@@ -225,6 +225,41 @@ describe("the camper page", () => {
     expect(h).toContain("Air conditioning");
   });
 
+  // b0.13 - the add-ons panel is the picker, reading CRM v6.04's view.
+  it("CRITICAL: the picker reads max_quantity from the view, and a required add-on has no control", async () => {
+    TABLES = {
+      public_listings: [LISTING], public_listing_photos: [],
+      public_listing_addons: [
+        { addon_id: "a1", unit_id: LISTING.unit_id, name: "Linen package", price: 30, daily: false, max_quantity: 3, position: 1 },
+        { addon_id: "a2", unit_id: LISTING.unit_id, name: "Generator", price: 45, daily: true, max_quantity: 1, position: 2 },
+        { addon_id: "a3", unit_id: LISTING.unit_id, name: "Prep kit", price: 20, required: true, max_quantity: 5, position: 3 },
+      ],
+      public_listing_amenities: [],
+    };
+    const { html } = await renderAsync(camperPage("mt1yujz87zxzve"));
+    const h = html();
+    expect(h).toMatch(/aria-label="How many Linen package"/);
+    expect((h.match(/<option/g) || []).length).toBe(4); // None, 1, 2, 3
+    expect(h).toMatch(/aria-label="Add Generator"/);
+    expect(h).not.toMatch(/Prep kit"/); // no control labelled for the required one
+    expect(h).toContain("$45 per day");
+    expect(h).toContain("up to 3 per booking");
+  });
+
+  it("CRITICAL: an add-on the office never priced is 'ask us', not \"$0\" - and cannot be picked", async () => {
+    // Number(null) is 0: before b0.13 this panel printed "$0" for it, and a
+    // picker offering it would send a request the server refuses outright.
+    TABLES = {
+      public_listings: [LISTING], public_listing_photos: [],
+      public_listing_addons: [{ addon_id: "a9", unit_id: LISTING.unit_id, name: "Kayak", price: null, max_quantity: 1, position: 1 }],
+      public_listing_amenities: [],
+    };
+    const { html } = await renderAsync(camperPage("mt1yujz87zxzve"));
+    expect(html()).toContain("Ask us about this one");
+    expect(html()).not.toContain("$0");
+    expect(html()).not.toMatch(/aria-label="Add Kayak"/);
+  });
+
   it("CRITICAL: an unknown camper is Not Found, not an error", async () => {
     TABLES = { public_listings: [] };
     const { html } = await renderAsync(camperPage("does-not-exist"));

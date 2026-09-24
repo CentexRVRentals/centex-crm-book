@@ -175,6 +175,26 @@ for (const [name, spec] of Object.entries(FUNCTIONS)) {
       continue;
     }
     console.log(`  ${green("ok")}    ${name} ${dim(`(refused an empty request, as it should)`)}`);
+
+    // b0.13 - THE LIVE QUOTE. A quote for no camper must be refused AS A
+    // QUOTE: ok:false, quote:true, a sentence. A deploy from before CRM v6.03
+    // answers without `quote`, and the quote box would show "couldn't work out
+    // a total" on every camper. Nothing is written either way.
+    if (spec.quote) {
+      const q = await fetch(`${url}/functions/v1/${name}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quote: true, addons: [] }),
+      });
+      const qb = await q.json().catch(() => null);
+      if (qb && qb.ok === false && qb.quote === true && Array.isArray(qb.errors) && qb.errors.length) {
+        console.log(`  ${green("ok")}    ${name} quote ${dim(`(refused a quote for no camper, as a quote)`)}`);
+      } else {
+        console.log(`  ${red("FAIL")}  ${name} does not answer { quote: true } — deploy CRM v6.03 before this site`);
+        console.log(`        got ${q.status} ${JSON.stringify(qb)?.slice(0, 120)}`);
+        failures++;
+      }
+    }
   } catch (err) {
     console.log(`  ${red("FAIL")}  ${name} — ${err.message}`);
     failures++;

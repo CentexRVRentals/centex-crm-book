@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from "react";
 import {
   monthGrid, MONTH_NAMES, busyDaySet, todayCentral,
-  addDays, nightsBetween, checkDates, estimate,
+  addDays, nightsBetween, checkDates,
 } from "../lib/dates.js";
-import { money } from "../lib/listings.js";
 
 // The calendar. Busy days are not clickable, so a guest cannot pick a week
 // that will be refused — which is the whole reason this repo implements the
@@ -29,7 +28,6 @@ export default function DatePicker({ listing, busy, value, onChange }) {
   const verdict = start && end
     ? checkDates({ start, end, busy, minimumNights: listing.minimumNights, today })
     : null;
-  const quote = verdict?.ok ? estimate({ ...listing, nights: verdict.nights }) : null;
 
   function pick(iso) {
     if (busyDays.has(iso) || iso < today) return;
@@ -116,23 +114,10 @@ export default function DatePicker({ listing, busy, value, onChange }) {
                 {verdict.errors.map((e) => <li key={e}>{e}</li>)}
               </ul>
             ) : null}
-            {quote ? (
-              <ul className="specs">
-                <li><span className="k">{money(quote.nightly)} × {quote.nights} nights</span><span>{money(quote.subtotal)}</span></li>
-                {quote.prepFee ? <li><span className="k">{listing.prepFeeDescription || "Prep fee"}</span><span>{money(quote.prepFee)}</span></li> : null}
-                <li><span className="k"><strong>Estimate</strong></span><span><strong>{money(quote.total)}</strong></span></li>
-              </ul>
-            ) : null}
-            {/* NOT A TOTAL, and it says so. Tax, insurance, delivery and
-                add-ons are quoted by the office on approval. A number a guest
-                reads as final and is then charged differently is worse than no
-                number at all. */}
-            {quote ? (
-              <p className="card-meta" style={{ marginTop: 8 }}>
-                Estimate only — tax, insurance{listing.deliveryDollarMile ? ", delivery" : ""} and any
-                add-ons are confirmed when we come back to you.
-              </p>
-            ) : null}
+            {/* b0.13 - NO PRICE HERE ANY MORE. The old figure (nightly x
+                nights + prep fee) was retired: the quote box below the add-ons
+                shows the server's total, tax and add-ons included, and two
+                numbers for one stay is two opinions about money. */}
             <button className="btn ghost" onClick={() => onChange({ start: "", end: "" })}>Clear dates</button>
           </>
         )}

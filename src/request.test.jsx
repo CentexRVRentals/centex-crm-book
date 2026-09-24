@@ -221,7 +221,8 @@ describe("the form", () => {
     const m = await mount(form());
     clickButton(m.host, "Send request");
     await act(async () => { await Promise.resolve(); });
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // b0.13 - the quote box's own calls (quote:true) are not the request.
+    expect(fetchSpy.mock.calls.filter((c) => JSON.parse(c[1].body).quote !== true)).toEqual([]);
     expect(m.host.textContent).toMatch(/name we can put on the reservation/i);
     m.cleanup();
   });
@@ -233,7 +234,8 @@ describe("the form", () => {
     type(m.host, "Your name", "Jane Doe");
     clickButton(m.host, "Send request");
     await act(async () => { await Promise.resolve(); });
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // b0.13 - the quote box's own calls (quote:true) are not the request.
+    expect(fetchSpy.mock.calls.filter((c) => JSON.parse(c[1].body).quote !== true)).toEqual([]);
     expect(m.host.textContent).toMatch(/email address or a phone number/i);
     m.cleanup();
   });
@@ -241,6 +243,10 @@ describe("the form", () => {
   it("CRITICAL: a valid request sends the honeypot field along with the rest", async () => {
     let sent = null;
     vi.stubGlobal("fetch", vi.fn(async (_url, opts) => {
+      // b0.13 - the form's quote box asks the same function with quote:true
+      // (after its debounce). Those are not the request; ignore them, so a
+      // slow machine cannot make this test read a quote body as the request.
+      if (JSON.parse(opts.body).quote === true) return { status: 400, json: async () => ({ ok: false, quote: true, errors: ["x"] }) };
       sent = JSON.parse(opts.body);
       return { status: 200, ok: true, json: async () => ({ ok: true, reservationNum: "WEB-1" }) };
     }));
@@ -254,6 +260,8 @@ describe("the form", () => {
     expect(sent).toHaveProperty("company");
     expect(sent.start).toBe(DATES.start);
     expect(sent.unitId).toBe("u1");
+    // b0.13 - and the add-ons go as an array, never the blank-filled "".
+    expect(sent.addons).toEqual([]);
     m.cleanup();
   });
 
@@ -262,7 +270,9 @@ describe("the form", () => {
     // guest not wondering whether the first tap worked — but two requests in
     // flight is still two requests.
     let calls = 0;
-    vi.stubGlobal("fetch", vi.fn(async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url, opts) => {
+      // b0.13 - quote calls (quote:true) are not requests; see above.
+      if (JSON.parse(opts.body).quote === true) return { status: 400, json: async () => ({ ok: false, quote: true, errors: ["x"] }) };
       calls++;
       await new Promise((r) => setTimeout(r, 30));
       return { status: 200, ok: true, json: async () => ({ ok: true, reservationNum: "WEB-1" }) };
@@ -308,8 +318,15 @@ describe("the form", () => {
     const box = m.host.querySelector('input[type="checkbox"]');
     act(() => { box.click(); });
     expect(m.host.textContent).toMatch(/Delivery address/);
-    // And the fee is NOT quoted — the office works it out at approval.
-    expect(m.host.textContent).toMatch(/work out the delivery fee/i);
+    // b0.13 RE-POINTED. This asserted "We'll work out the delivery fee and
+    // include it when we come back to you" - the promise that the fee was
+    // NOT quoted. CRM decision 5 (09-23) replaced it: the quote box shows
+    // delivery as "from $minimum - we'll confirm the delivery price", priced
+    // by the server (quote.test.jsx drives that). What stays true, and is
+    // held here: no distance is calculated on this page, and the old promise
+    // is gone rather than contradicting the quote beside it.
+    expect(m.host.textContent).not.toMatch(/work out the delivery fee/i);
+    expect(m.host.textContent).not.toMatch(/per mile|\/mile/i);
     m.cleanup();
   });
 

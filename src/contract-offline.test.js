@@ -227,6 +227,25 @@ describe("the contract itself is well formed", () => {
     }
   });
 
+  // b0.13 - the live quote is part of the contract, spelled out.
+  it("CRITICAL: the quote is declared - what it sends, returns, and what a line is", () => {
+    const rb = FUNCTIONS["request-booking"];
+    expect(rb.sends).toContain("addons");
+    expect(rb.returns).toEqual(expect.arrayContaining(["lines", "totalCents", "estimate"]));
+    expect(rb.quote.sends).toEqual(expect.arrayContaining(["quote", "unitId", "start", "end", "method", "addons"]));
+    // A quote asks about a STAY: no person, no honeypot, no money.
+    for (const k of ["name", "email", "phone", "company", "total", "price", "dryRun"]) expect(rb.quote.sends).not.toContain(k);
+    expect(rb.quote.line).toEqual(["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents"]);
+    // No tax rate ever reaches the guest (CRM: publicQuote sends amounts only).
+    expect(JSON.stringify(rb.quote)).not.toMatch(/rate/i);
+    expect(rb.quote.kinds).toEqual(["rental", "prep", "addon", "delivery", "tax"]);
+  });
+
+  it("CRITICAL: charge_by is gone from the contract and from every read (CRM decision 6)", () => {
+    expect(VIEWS.public_listing_addons.optional).not.toContain("charge_by");
+    expect(VIEWS.public_listing_addons.optional).toContain("max_quantity");
+  });
+
   it("CRITICAL: the honeypot field is part of the request contract", () => {
     // The server answers a filled `company` field with a plausible success and
     // writes nothing. If this site stops sending the field, the form loses its

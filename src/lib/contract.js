@@ -19,7 +19,7 @@
 // write the code that reads it. A column that fails the check does not exist
 // yet, whatever the CRM's migration says.
 
-export const CONTRACT_VERSION = "b0.1";
+export const CONTRACT_VERSION = "b0.13";
 
 // ----------------------------------------------------------------------------
 // The five views. Granted SELECT to `anon` and nothing else.
@@ -54,7 +54,14 @@ export const VIEWS = {
   public_listing_addons: {
     why: "what a guest can add, and what it costs",
     required: ["unit_id", "name", "price"],
-    optional: ["addon_id", "description", "addon_type", "charge_by", "daily", "required", "position", "image_path"],
+    // b0.13 (CRM v6.04): + max_quantity, - charge_by.
+    //   max_quantity - the most ONE booking may take (CRM decision 7), already
+    //     normalised by the view to the number request-booking prices with, so
+    //     this site never re-derives it. Optional: an older view without it
+    //     means "1 of each", which the picker also falls back to.
+    //   charge_by - gone (decision 6: Daily is how an add-on is charged). It
+    //     was mapped here and never shown.
+    optional: ["addon_id", "description", "addon_type", "daily", "max_quantity", "required", "position", "image_path"],
   },
 
   public_listing_amenities: {
@@ -99,14 +106,40 @@ export const FUNCTIONS = {
     // Sent. `company` is a honeypot: it is rendered hidden, a human never fills
     // it, and the server answers a filled one with a plausible success while
     // writing nothing. It must stay in the form.
+    //
+    // b0.13: `addons` is [{ id, qty }] - the guest's choices, ALWAYS an array
+    // (empty for none). The server refuses anything else, "" included, so it is
+    // never blank-filled like the text fields.
     sends: [
       "unitId", "start", "end", "name", "email", "phone",
       "method", "guests", "address", "city", "state", "zip", "notes", "company",
+      "addons",
     ],
     // Returned. `errors` is an array of sentences written to be shown to a
     // guest verbatim — this site does not rewrite them, because the server is
     // the only thing that knows why it refused.
-    returns: ["ok", "reservationNum", "errors", "duplicate"],
+    //
+    // b0.13 (CRM v6.03): a real request also returns the quote it saved -
+    // `lines`, `totalCents`, `estimate` - which /requested shows.
+    returns: ["ok", "reservationNum", "errors", "duplicate", "lines", "totalCents", "estimate"],
+
+    // b0.13 - THE LIVE QUOTE. The same function with `quote: true`: the camper,
+    // dates, method and add-ons are checked exactly as a request checks them,
+    // priced by the server, and nothing is written. Every refusal carries
+    // `quote: true` too, so an answer without it is not a quote (an older
+    // deploy, or the honeypot's plausible nothing).
+    //
+    // A line: { kind, label, addonId, quantity, nights, unitPriceCents,
+    // amountCents }. kind is rental | prep | addon | delivery | tax. No tax
+    // rate is ever sent - a rate is a business detail the guest sees as an
+    // amount. `estimate` is true when delivery is on it: the delivery line is
+    // the camper's minimum and the office confirms the distance.
+    quote: {
+      sends: ["quote", "unitId", "start", "end", "method", "addons"],
+      returns: ["ok", "quote", "lines", "totalCents", "estimate", "errors"],
+      line: ["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents"],
+      kinds: ["rental", "prep", "addon", "delivery", "tax"],
+    },
   },
 
   // b0.12 — the "choose how to pay" page (/pay/:token). Deployed

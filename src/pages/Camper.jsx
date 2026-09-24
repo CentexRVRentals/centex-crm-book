@@ -6,6 +6,9 @@ import {
 } from "../lib/listings.js";
 import DatePicker from "../components/DatePicker.jsx";
 import RequestForm from "../components/RequestForm.jsx";
+import AddonPicker from "../components/AddonPicker.jsx";
+import { QuoteBox } from "../components/Quote.jsx";
+import { addonsPayload } from "../lib/quote.js";
 import { Loading, ErrorState, NotFound } from "../components/States.jsx";
 import { checkDates, todayCentral } from "../lib/dates.js";
 import { usePageMeta, camperMeta } from "../lib/meta.js";
@@ -29,6 +32,11 @@ export default function Camper() {
   // The form replaces the picker rather than sitting under it. On a phone a
   // form below a calendar is a form nobody scrolls to.
   const [requesting, setRequesting] = useState(false);
+  // b0.13 - the guest's add-on choices, { [addonId]: qty }. On the PAGE for
+  // the same reason as the dates: the picker, the quote box and the request
+  // form all read the one object, so what is ticked is what is priced is what
+  // is sent.
+  const [selections, setSelections] = useState({});
 
   async function load() {
     setState({ status: "loading" });
@@ -46,7 +54,7 @@ export default function Camper() {
     }
   }
 
-  useEffect(() => { load(); setDates({ start: "", end: "" }); setRequesting(false); }, [unitId]);
+  useEffect(() => { load(); setDates({ start: "", end: "" }); setRequesting(false); setSelections({}); }, [unitId]);
 
   // Hooks cannot be called conditionally, so this runs on every render —
   // including while loading, when it falls back to the site default. That is
@@ -58,6 +66,11 @@ export default function Camper() {
   if (state.status === "error") return <ErrorState detail={state.detail} onRetry={load} />;
 
   const u = state.listing;
+  const datesOk = Boolean(dates.start && dates.end) && checkDates({
+    start: dates.start, end: dates.end, busy: state.busy,
+    minimumNights: u.minimumNights, today: todayCentral(),
+  }).ok;
+  const chosen = addonsPayload(selections, state.addons);
 
   return (
     <div className="wrap">
@@ -93,48 +106,51 @@ export default function Camper() {
               {u.checkOut ? <Row k="Return by" v={u.checkOut} /> : null}
               {u.cancellationPolicy ? <Row k="Cancellation" v={u.cancellationPolicy} /> : null}
             </ul>
-            {/* Delivery pricing is SHOWN, never calculated. The office quotes
-                the fee at approval; a distance calculation on a public page
-                would be a second opinion about money. */}
+            {/* Delivery pricing is SHOWN, never calculated. b0.13 (CRM decision
+                5): "from $minimum, confirmed by the office" - a distance
+                calculation needs a geocoder, and the one the CRM has is
+                office-side only. */}
             {u.deliveryDollarMile ? (
               <p className="card-meta" style={{ marginTop: 12, marginBottom: 0 }}>
-                Delivery available{u.deliveryMilesMax ? ` within ${u.deliveryMilesMax} miles` : ""} —
-                we'll quote it with your request.
+                Delivery available{u.deliveryMilesMax ? ` within ${u.deliveryMilesMax} miles` : ""}
+                {u.deliveryMinimum > 0 ? `, from ${money(u.deliveryMinimum)}` : ""} — we'll confirm the delivery price.
               </p>
             ) : null}
           </div>
 
+          {/* b0.13 - the picker sits between the dates and the total, and
+              stays editable while the form is open: changing a choice there
+              re-prices the form's quote box. */}
           {requesting ? (
-            <RequestForm
-              listing={u}
-              busy={state.busy}
-              dates={dates}
-              onCancel={() => setRequesting(false)}
-            />
+            <>
+              <AddonPicker items={state.addons} value={selections} onChange={setSelections} />
+              <RequestForm
+                listing={u}
+                busy={state.busy}
+                dates={dates}
+                addons={chosen}
+                onCancel={() => setRequesting(false)}
+              />
+            </>
           ) : (
             <>
               <DatePicker listing={u} busy={state.busy} value={dates} onChange={setDates} />
-              {dates.start && dates.end ? (
-                <RequestCta listing={u} busy={state.busy} dates={dates} onStart={() => setRequesting(true)} />
-              ) : null}
+              <AddonPicker items={state.addons} value={selections} onChange={setSelections} />
+              <QuoteBox unitId={u.unitId} dates={dates} method="pickup" addons={chosen} ready={datesOk} />
+              {datesOk ? <RequestCta onStart={() => setRequesting(true)} /> : null}
             </>
           )}
           <Specs listing={u} />
-          <Addons items={state.addons} />
         </div>
       </div>
     </div>
   );
 }
 
-// Only appears once the dates are valid. A call to action next to a range the
-// server would refuse is a button that leads somewhere disappointing.
-function RequestCta({ listing, busy, dates, onStart }) {
-  const ok = checkDates({
-    start: dates.start, end: dates.end, busy,
-    minimumNights: listing.minimumNights, today: todayCentral(),
-  }).ok;
-  if (!ok) return null;
+// Only appears once the dates are valid (the page checks, b0.13 - the same
+// check the quote box waits for). A call to action next to a range the server
+// would refuse is a button that leads somewhere disappointing.
+function RequestCta({ onStart }) {
   return (
     <div className="panel">
       <button className="btn" style={{ marginTop: 0, width: "100%" }} onClick={onStart}>
@@ -223,37 +239,6 @@ function Amenities({ items }) {
           {group ? <div className="card-meta" style={{ marginBottom: 4 }}>{group}</div> : null}
           <div className="tags">
             {names.map((n) => <span className="tag" key={n}>{n}</span>)}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Addons({ items }) {
-  // Also empty today. Says so plainly rather than vanishing, because an empty
-  // add-ons panel on a camper page is information: there is nothing to add.
-  if (!items.length) {
-    return (
-      <div className="panel">
-        <h3>Add-ons</h3>
-        <p className="empty-note" style={{ margin: 0 }}>Nothing to add on this one just yet.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="panel">
-      <h3>Add-ons</h3>
-      {items.map((a) => (
-        <div className="addon" key={a.addonId || a.name}>
-          <div>
-            <div className="n">
-              {a.name} {a.required ? <span className="req">included</span> : null}
-            </div>
-            {a.description ? <div className="d">{a.description}</div> : null}
-          </div>
-          <div style={{ whiteSpace: "nowrap" }}>
-            {money(a.price)}{a.daily ? <span className="d"> / day</span> : null}
           </div>
         </div>
       ))}

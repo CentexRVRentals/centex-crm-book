@@ -131,20 +131,14 @@ export function checkDates({ start, end, busy, minimumNights, today }) {
 }
 
 // ----------------------------------------------------------------------------
-// Quoting
+// Quoting - RETIRED in b0.13.
 // ----------------------------------------------------------------------------
-// NIGHTLY RATE ONLY, plus fees the listing states. NOT a total — no tax, no
-// insurance, no delivery, no add-ons. The office quotes the real number at
-// approval.
-//
-// Deliberately labelled as an estimate wherever it is shown. A number a guest
-// reads as final and is then charged differently is worse than no number.
-export function estimate({ pricePerNight, prepFee, nights }) {
-  const rate = Number(pricePerNight) || 0;
-  const prep = Number(prepFee) || 0;
-  if (!nights || nights < 1 || !rate) return null;
-  return { nights, nightly: rate, subtotal: rate * nights, prepFee: prep, total: rate * nights + prep };
-}
+// `estimate()` lived here: nightly rate x nights + prep fee, shown under the
+// calendar as "Estimate only". From b0.13 the server prices the stay (CRM
+// v6.03, request-booking `quote: true`) and the quote box shows its answer -
+// tax, add-ons and delivery included. Two numbers on one page, one of them
+// missing half the charges, is two opinions about money, so this one went.
+// The rule this site keeps: it does no arithmetic on money at all.
 
 // Calendar grid for a month: 42 cells, Sunday-first, with the neighbouring
 // days that fill the first and last weeks.

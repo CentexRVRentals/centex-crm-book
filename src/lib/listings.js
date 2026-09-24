@@ -181,9 +181,14 @@ export async function fetchAddons(unitId) {
       addonId: text(r?.addon_id),
       name: text(r?.name),
       description: text(r?.description),
-      price: num(r?.price),
-      chargeBy: text(r?.charge_by),
+      // b0.13 - NULL STAYS NULL. num() reads Number(null) as 0, so an add-on
+      // the office never priced showed as "$0" - and in the picker it would be
+      // choosable, and the server refuses a request with an unpriced add-on.
+      price: r?.price === null || r?.price === undefined || r?.price === "" ? null : num(r?.price),
       daily: r?.daily === true,
+      // b0.13 - the most ONE booking may take. The view already applied the
+      // server's rule (blank or fractional -> 1); anything unusable here is 1.
+      maxQuantity: Number.isInteger(num(r?.max_quantity)) && num(r?.max_quantity) >= 1 ? num(r?.max_quantity) : 1,
       required: r?.required === true,
       position: num(r?.position, 0),
     }))
