@@ -19,11 +19,18 @@ import { ADDRESS_DEBOUNCE_MS, ADDRESS_INCOMPLETE, QUOTE_DEBOUNCE_MS, deliveryDes
 // have gone in that hour. The server checks too; this is so the guest hears it
 // from the page rather than from a refusal.
 
+// b0.17 (CRM v6.12) - OR A BOOKING. The quote box says which path this camper
+// is on for these dates. On "book" (outside its notice window, with payments
+// on) the form is Book and pay: the server makes a short hold and the guest
+// goes to the pay page to book by paying. The wording changes with it - this
+// form never calls a request a booking, nor a booking a request. Until a quote
+// says "book", it is a request: that is the safe thing to have said.
+//
 // b0.13 - `addons` is the guest's choices as the server wants them
 // ([{ id, qty }], from addonsPayload on the camper page). The form sends them
 // and shows the live total above the send button, priced for pickup or
 // delivery as the box below is ticked.
-export default function RequestForm({ listing, busy, dates, addons = [], onCancel }) {
+export default function RequestForm({ listing, busy, dates, addons = [], initialPath = "request", onCancel }) {
   const nav = useNavigate();
   const [guest, setGuest] = useState({
     name: "", email: "", phone: "", guests: "", notes: "", company: "",
@@ -33,6 +40,11 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
   });
   const [busyState, setBusy] = useState(false);
   const [errors, setErrors] = useState([]);
+  // Starts from what the camper page's quote said, then follows the form's
+  // own quote box (delivery or an address can change nothing about the path
+  // today, but the box is the one asking now).
+  const [path, setPath] = useState(initialPath === "book" ? "book" : "request");
+  const booking = path === "book";
 
   // b0.14 - address suggestions. Stored WITH the text they answer, so a list
   // for "285 Col" never shows under "285 Cold Spring Rd"; `picked` is the line
@@ -74,7 +86,7 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
     setBusy(true);
     setErrors([]);
     const result = await requestBooking(
-      buildPayload({ unitId: listing.unitId, dates, guest, delivery, addons })
+      buildPayload({ unitId: listing.unitId, dates, guest, delivery, addons, book: booking })
     );
     setBusy(false);
 
@@ -82,11 +94,19 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
       setErrors(result.errors);
       return;
     }
+    // b0.17 - booked by paying: straight to the pay page, which says how long
+    // the dates are held. The token is the page's own credential.
+    if (result.path === "book") {
+      nav(`/pay/${encodeURIComponent(result.payToken)}`);
+      return;
+    }
     nav(`/requested/${encodeURIComponent(result.reservationNum)}`, {
       state: {
         camper: listing.name, start: dates.start, end: dates.end, duplicate: result.duplicate,
         // b0.13 - the quote the server SAVED with the hold, shown on /requested.
         quote: result.quote || null,
+        // b0.17 - they pressed Book and pay, and today it is a request.
+        switched: result.switched === true,
       },
     });
   }
@@ -114,11 +134,18 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
 
   return (
     <div className="panel">
-      <h3>Request these dates</h3>
-      <p className="card-meta" style={{ marginTop: 0 }}>
-        This isn't a booking yet — we'll check the camper over and come back to you,
-        usually within a day.
-      </p>
+      <h3>{booking ? "Book these dates" : "Request these dates"}</h3>
+      {booking ? (
+        <p className="card-meta form-intro" style={{ marginTop: 0 }}>
+          Pay to book — your booking is confirmed as soon as your payment goes through.
+          We'll hold the dates for you while you pay.
+        </p>
+      ) : (
+        <p className="card-meta form-intro" style={{ marginTop: 0 }}>
+          This isn't a booking yet — we'll check the camper over and come back to you,
+          usually within a day.
+        </p>
+      )}
 
       <div className="form">
         <label>
@@ -217,6 +244,7 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
         destination={delivery}
         debounceMs={delivery.wanted ? ADDRESS_DEBOUNCE_MS : QUOTE_DEBOUNCE_MS}
         inForm
+        onPath={setPath}
         ready={checkDates({
           start: dates.start, end: dates.end, busy,
           minimumNights: listing.minimumNights, today: todayCentral(),
@@ -234,7 +262,7 @@ export default function RequestForm({ listing, busy, dates, addons = [], onCance
 
       <div className="actions">
         <button className="btn" onClick={submit} disabled={busyState}>
-          {busyState ? "Sending…" : "Send request"}
+          {booking ? (busyState ? "Holding your dates…" : "Book and pay") : (busyState ? "Sending…" : "Send request")}
         </button>
         <button className="btn ghost" onClick={onCancel} disabled={busyState}>Back</button>
       </div>

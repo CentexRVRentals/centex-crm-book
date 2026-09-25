@@ -110,10 +110,15 @@ export const FUNCTIONS = {
     // b0.13: `addons` is [{ id, qty }] - the guest's choices, ALWAYS an array
     // (empty for none). The server refuses anything else, "" included, so it is
     // never blank-filled like the text fields.
+    //
+    // b0.17 (CRM v6.12): `book` - true when the guest pressed Book and pay on a
+    // camper whose quote said `path: "book"`, false otherwise. It can only ever
+    // NARROW to a request: the server books only when its own path for that
+    // camper, today, is "book".
     sends: [
       "unitId", "start", "end", "name", "email", "phone",
       "method", "guests", "address", "city", "state", "zip", "notes", "company",
-      "addons",
+      "addons", "book",
     ],
     // Returned. `errors` is an array of sentences written to be shown to a
     // guest verbatim — this site does not rewrite them, because the server is
@@ -126,7 +131,17 @@ export const FUNCTIONS = {
     //
     // b0.16 (CRM v6.09): - `estimate`. There are no estimates: a delivery is
     // priced by the mile or refused, in one of Jesse's sentences.
-    returns: ["ok", "reservationNum", "errors", "duplicate", "lines", "subtotalCents", "taxCents", "totalCents"],
+    //
+    // b0.17 (CRM v6.12) - THE TWO PATHS. `path` is "book" or "request".
+    //   book     a short checkout hold was made: `payToken` opens /pay/<token>,
+    //            `holdUntil` (ISO) is when the dates stop being held.
+    //   request  a Held request, as before. `switched` is true when the guest
+    //            pressed Book and pay but today it is a request (the start slid
+    //            inside the notice window while the page sat open).
+    returns: [
+      "ok", "reservationNum", "errors", "duplicate", "lines", "subtotalCents", "taxCents", "totalCents",
+      "path", "payToken", "holdUntil", "switched",
+    ],
 
     // b0.13 - THE LIVE QUOTE. The same function with `quote: true`: the camper,
     // dates, method and add-ons are checked exactly as a request checks them,
@@ -155,7 +170,9 @@ export const FUNCTIONS = {
     // site deploys BEFORE v6.09, and v6.08 still sends them (they are skipped).
     quote: {
       sends: ["quote", "unitId", "start", "end", "method", "addons", "address", "city", "state", "zip"],
-      returns: ["ok", "quote", "lines", "subtotalCents", "taxCents", "totalCents", "errors"],
+      // b0.17 (CRM v6.12): + `path` - which button the form shows. Anything
+      // but "book" (an older server included) is a request.
+      returns: ["ok", "quote", "lines", "subtotalCents", "taxCents", "totalCents", "errors", "path"],
       line: ["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents", "miles"],
       kinds: ["rental", "prep", "addon", "delivery", "tax"],
     },
@@ -178,6 +195,9 @@ export const FUNCTIONS = {
     returns: [
       "reservationNum", "unitName", "start", "end", "totalCents", "paidCents", "owedCents",
       "insideWindow", "windowDays", "options", "security", "words", "quote", "url", "error",
+      // b0.17 (CRM v6.12): until when a Book-and-pay guest's dates are held
+      // (ISO), or null for every other booking.
+      "holdUntil",
     ],
     quote: {
       returns: ["items", "subtotalCents", "taxCents"],

@@ -103,8 +103,11 @@ export default function Pay({ leave = toStripe }) {
   return (
     <div className="wrap">
       <div className="confirm pay">
-        <h1>Choose how to pay</h1>
+        {/* b0.17 (CRM v6.12) - a Book-and-pay guest pays to book; the dates
+            are theirs only while the hold lasts, and the page says until when. */}
+        <h1>{view.hold ? "Pay to book" : "Choose how to pay"}</h1>
         {view.trip ? <p className="card-meta">{view.trip}</p> : null}
+        {view.hold ? <p className="hold-line" role="status">{view.hold}</p> : null}
 
         <div className="resnum">
           <span className="k">Your reference</span>

@@ -143,6 +143,19 @@ function payItems(raw) {
   };
 }
 
+// b0.17 (CRM v6.12) - a Book-and-pay guest's hold, as a time on the camper's
+// clock (US Central, where every date in this business is reckoned). "" for an
+// approved booking (holdUntil null) or anything that is not a time: a page
+// that promised "held until" a nonsense time is worse than one that says
+// nothing.
+export function holdLine(holdUntil) {
+  if (typeof holdUntil !== "string" || !holdUntil) return "";
+  const t = new Date(holdUntil);
+  if (Number.isNaN(t.getTime())) return "";
+  const time = t.toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" });
+  return `We're holding these dates for you until ${time} (Central). Finish paying before then to book them.`;
+}
+
 // The page as sentences. `words` comes from the server (balanceVerb,
 // securityVerb) so the day the CRM's charger ships, the page stops saying
 // "is due" and starts saying what really happens without a release here.
@@ -194,6 +207,8 @@ export function payPageView(page) {
   const dates = shortDate(p.start) && shortDate(p.end) ? `${shortDate(p.start)} – ${shortDate(p.end)}` : "";
   return {
     reservationNum: typeof p.reservationNum === "string" ? p.reservationNum : "",
+    // b0.17 - "" unless this is a Book-and-pay guest's hold.
+    hold: holdLine(p.holdUntil),
     trip: [typeof p.unitName === "string" ? p.unitName : "", dates].filter(Boolean).join(" · "),
     ...payItems(p.quote),
     total: usd(p.totalCents),

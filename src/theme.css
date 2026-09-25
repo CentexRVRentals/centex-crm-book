@@ -185,6 +185,10 @@ a { color: inherit; text-decoration: none; }
 .choice-head { display: flex; justify-content: space-between; gap: 12px; }
 .choice-amt { font-weight: 600; color: var(--pine); }
 .security { margin-top: 12px; }
+/* b0.17 - a Book-and-pay guest's hold: how long the dates are theirs. Said
+   once, near the top, in the pine the site uses for "yours". */
+.hold-line { margin: 12px 0 0; padding: 10px 14px; border-left: 3px solid var(--pine);
+             background: #F2F5F2; border-radius: 0 var(--radius) var(--radius) 0; color: var(--ink); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* Version marker. Quiet on purpose — it is for you, not for a guest, but a

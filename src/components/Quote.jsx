@@ -26,7 +26,13 @@ import {
 // b0.16 (CRM v6.09) - and with delivery ticked, NOTHING is asked until the
 // address is complete: a delivery is priced by the mile or refused, so a half
 // address has no price to show. The box says to finish it instead.
-export function QuoteBox({ unitId, dates, method, addons, destination = null, ready, inForm = false, debounceMs = QUOTE_DEBOUNCE_MS }) {
+//
+// b0.17 (CRM v6.12) - `onPath` hears which path the server says this camper is
+// on for these dates: "book" (Book and pay) or "request". Told only when an
+// answer for the request ON SCREEN arrives - a refusal or an unreadable answer
+// is "request" (the safe button: a request is never a promise) - and NOT while
+// one is on its way, so the button does not flicker as the guest types.
+export function QuoteBox({ unitId, dates, method, addons, destination = null, ready, inForm = false, debounceMs = QUOTE_DEBOUNCE_MS, onPath = null }) {
   const dest = method === "delivery" ? deliveryDestination(destination) : null;
   const key = JSON.stringify({ unitId, start: dates.start, end: dates.end, method, addons, destination: dest });
   const [answer, setAnswer] = useState({ key: null, result: null });
@@ -55,8 +61,13 @@ export function QuoteBox({ unitId, dates, method, addons, destination = null, re
     return () => { clearTimeout(timer); ctrl.abort(); };
   }, [key, asking, debounceMs]);
 
-  if (!ready) return null;
   const current = answer.key === key ? answer.result : null;
+  const heard = current ? (current.ok && current.path === "book" ? "book" : "request") : null;
+  useEffect(() => {
+    if (heard && typeof onPath === "function") onPath(heard);
+  }, [heard, onPath]);
+
+  if (!ready) return null;
 
   return (
     <div className={inForm ? "quote in-form" : "panel quote"} aria-live="polite" aria-busy={needsAddress || current ? "false" : "true"}>

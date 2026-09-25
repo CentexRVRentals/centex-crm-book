@@ -16,6 +16,12 @@ import { readQuote } from "./quote.js";
 //   { ok: true,  duplicate: true, ... }      the same request twice — one hold
 //   { ok: false, errors: [ "..." ] }         refused, with sentences to SHOW
 //
+// b0.17 (CRM v6.12) - AND WHICH PATH IT TOOK. `path: "book"` with a `payToken`
+// means a short checkout hold was made and the guest goes to /pay/<token> to
+// book by paying; anything else is a request. A "book" answer WITHOUT a token
+// is read as a request: there is nowhere to send the guest, and telling them
+// they are booked would be the one wrong thing to say.
+//
 // **The error sentences are written to be read by a guest, verbatim.** This
 // module does not rewrite them and the form does not paraphrase them. The
 // server is the only thing that knows why it refused, and a second opinion
@@ -82,11 +88,17 @@ export async function requestBooking(payload) {
     // b0.13 - the quote the server SAVED with the hold (CRM v6.03). A
     // duplicate answers without one: the first request's quote is the one on
     // the booking, and this site does not have it.
+    const payToken = typeof body.payToken === "string" && body.payToken.trim() ? body.payToken.trim() : "";
+    const booked = body.path === "book" && payToken !== "";
     return {
       ok: true,
       reservationNum: body.reservationNum || "",
       duplicate: body.duplicate === true,
       quote: readQuote(body, { requireFlag: false }),
+      path: booked ? "book" : "request",
+      payToken: booked ? payToken : "",
+      holdUntil: booked && typeof body.holdUntil === "string" ? body.holdUntil : "",
+      switched: !booked && body.switched === true,
     };
   }
 
@@ -111,7 +123,11 @@ export async function requestBooking(payload) {
 // It must never go through the blank-fill below: the server refuses
 // `addons: ""` as malformed ("We couldn't read the add-ons..."), so a guest
 // who picked nothing would have been refused outright.
-export function buildPayload({ unitId, dates, guest, delivery, addons }) {
+//
+// b0.17 - `book` is ALWAYS a boolean: true only when the guest pressed Book and
+// pay. The server compares it to `true`, so the blank-fill below must never
+// reach it - "" would read as a request, which is safe but not what was asked.
+export function buildPayload({ unitId, dates, guest, delivery, addons, book = false }) {
   const wants = FUNCTIONS["request-booking"].sends;
   const payload = {
     unitId,
@@ -129,6 +145,7 @@ export function buildPayload({ unitId, dates, guest, delivery, addons }) {
     zip: delivery.wanted ? delivery.zip : "",
     company: guest.company || "",
     addons: Array.isArray(addons) ? addons : [],
+    book: book === true,
   };
   // Every field the contract says this endpoint accepts is present, even when
   // blank. A missing key and an empty one are the same to the server, but a

@@ -55,6 +55,16 @@ export default function Requested() {
           </div>
         ) : null}
 
+        {/* b0.17 (CRM v6.12) - they pressed Book and pay, and by the time it
+            reached us the start was inside the camper's notice window, so it
+            is a request. Said plainly: they did not book, and were not charged. */}
+        {state?.switched ? (
+          <p className="card-meta switched">
+            Your dates are now close enough that we need to check this one over ourselves,
+            so it's a request rather than a booking. Nothing has been charged.
+          </p>
+        ) : null}
+
         {state?.duplicate ? (
           // The server is idempotent: an identical repost returns the FIRST
           // reservation number rather than making a second hold. Said plainly,

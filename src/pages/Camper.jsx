@@ -32,6 +32,10 @@ export default function Camper() {
   // The form replaces the picker rather than sitting under it. On a phone a
   // form below a calendar is a form nobody scrolls to.
   const [requesting, setRequesting] = useState(false);
+  // b0.17 (CRM v6.12) - the path the quote box last heard for these dates:
+  // "book" (Book and pay) or "request". The call to action says which, and the
+  // form starts from it.
+  const [path, setPath] = useState("request");
   // b0.13 - the guest's add-on choices, { [addonId]: qty }. On the PAGE for
   // the same reason as the dates: the picker, the quote box and the request
   // form all read the one object, so what is ticked is what is priced is what
@@ -132,6 +136,7 @@ export default function Camper() {
                 busy={state.busy}
                 dates={dates}
                 addons={chosen}
+                initialPath={path}
                 onCancel={() => setRequesting(false)}
               />
             </>
@@ -139,8 +144,8 @@ export default function Camper() {
             <>
               <DatePicker listing={u} busy={state.busy} value={dates} onChange={setDates} />
               <AddonPicker items={state.addons} value={selections} onChange={setSelections} />
-              <QuoteBox unitId={u.unitId} dates={dates} method="pickup" addons={chosen} ready={datesOk} />
-              {datesOk ? <RequestCta onStart={() => setRequesting(true)} /> : null}
+              <QuoteBox unitId={u.unitId} dates={dates} method="pickup" addons={chosen} ready={datesOk} onPath={setPath} />
+              {datesOk ? <RequestCta path={path} onStart={() => setRequesting(true)} /> : null}
             </>
           )}
           <Specs listing={u} />
@@ -153,14 +158,18 @@ export default function Camper() {
 // Only appears once the dates are valid (the page checks, b0.13 - the same
 // check the quote box waits for). A call to action next to a range the server
 // would refuse is a button that leads somewhere disappointing.
-function RequestCta({ onStart }) {
+//
+// b0.17 (CRM v6.12) - on a camper the server says books outright ("book"), the
+// words change with it: a guest who can book now should not be told to wait.
+function RequestCta({ path, onStart }) {
+  const booking = path === "book";
   return (
     <div className="panel">
       <button className="btn" style={{ marginTop: 0, width: "100%" }} onClick={onStart}>
-        Request these dates
+        {booking ? "Book these dates" : "Request these dates"}
       </button>
       <p className="card-meta" style={{ margin: "8px 0 0", textAlign: "center" }}>
-        No payment now — we'll confirm first.
+        {booking ? "You'll pay to book on the next step." : "No payment now — we'll confirm first."}
       </p>
     </div>
   );

@@ -125,7 +125,7 @@ export function deliveryDestination(d) {
   return out.address.length >= 5 && out.city && out.state && out.zip ? out : null;
 }
 
-// Asks. Resolves to { ok: true, quote } | { ok: false, errors } |
+// Asks. Resolves to { ok: true, quote, path } | { ok: false, errors } |
 // { ok: false, unavailable: true } - never throws, never rejects, and an
 // aborted call (the guest changed something) resolves { aborted: true } so the
 // caller can ignore it.
@@ -160,7 +160,9 @@ export async function quoteBooking({ unitId, start, end, method, addons, destina
   }
   if (signal?.aborted) return { aborted: true };
   const quote = readQuote(body);
-  if (quote) return { ok: true, quote };
+  // b0.17 (CRM v6.12) - which button the form shows. Only the word "book"
+  // books; an older server, or anything else, is a request.
+  if (quote) return { ok: true, quote, path: body.path === "book" ? "book" : "request" };
   // A refusal - ONLY if it says it was a quote refusal, with sentences.
   if (body && body.ok === false && body.quote === true && Array.isArray(body.errors)) {
     const errors = body.errors.filter((e) => typeof e === "string" && e.trim());

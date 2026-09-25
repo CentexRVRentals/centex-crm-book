@@ -40,13 +40,27 @@ export default function Paid() {
   const { reservationNum } = useParams();
   const [params] = useSearchParams();
   const cancelled = params.get("cancelled") === "1";
+  // b0.17 (CRM v6.12) - Book and pay returns with ?booked=1: this payment IS
+  // the booking, so the page says so - and, backing out, that nothing is booked.
+  const booked = params.get("booked") === "1";
 
   return (
     <div className="wrap">
       <div className="confirm">
-        <h1>{cancelled ? "Nothing was charged" : "Payment received"}</h1>
+        <h1>{cancelled ? "Nothing was charged" : booked ? "You're booked" : "Payment received"}</h1>
 
-        {cancelled ? (
+        {cancelled && booked ? (
+          <p>
+            You closed the payment page before finishing, so your card wasn't charged and
+            nothing is booked. We're holding the dates for a few more minutes — go back to
+            finish paying, or book again from the camper's page.
+          </p>
+        ) : booked ? (
+          <p>
+            Thanks — your payment has gone through and the camper is yours. We'll text you a
+            confirmation shortly, and we'll be in touch before pick-up with everything you need.
+          </p>
+        ) : cancelled ? (
           // NOT AN ERROR, AND NOT PHRASED AS ONE. Backing out of a checkout is
           // a normal thing to do, and a guest who reads this as a failure will
           // either try again immediately or call. Neither is necessary: the

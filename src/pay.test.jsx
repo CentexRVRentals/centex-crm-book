@@ -117,8 +117,9 @@ describe("the words", () => {
   });
 
   it("hostile data renders as gaps, not as [object Object] or $0.00", () => {
-    const v = payPageView({ reservationNum: {}, unitName: 7, start: "x", totalCents: "1000", options: "no", security: { cents: 1, date: "no" }, quote: "no" });
-    expect(v).toEqual({ reservationNum: "", trip: "", total: "", paid: "", choices: [], security: "", items: [], subtotal: "", tax: "" });
+    // b0.17 - and a hold time that is not a time is no hold line at all.
+    const v = payPageView({ reservationNum: {}, unitName: 7, start: "x", totalCents: "1000", options: "no", security: { cents: 1, date: "no" }, quote: "no", holdUntil: { at: 1 } });
+    expect(v).toEqual({ reservationNum: "", hold: "", trip: "", total: "", paid: "", choices: [], security: "", items: [], subtotal: "", tax: "" });
   });
 });
 
