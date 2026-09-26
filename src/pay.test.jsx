@@ -21,7 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { choosePayment, loadPayPage, longDate, payPageView, shortDate, usd } from "./lib/payments.js";
+import { QUOTE_NOT_HELD, choosePayment, loadPayPage, longDate, payPageView, shortDate, usd } from "./lib/payments.js";
 import { FUNCTIONS } from "./lib/contract.js";
 import Pay from "./pages/Pay.jsx";
 
@@ -109,6 +109,15 @@ describe("the words", () => {
     const v = payPageView(PAGE);
     const all = [...v.choices.map((c) => c.detail), v.security].join(" ");
     expect(all).not.toMatch(/charged to your card|automatically|held on your card/);
+  });
+
+  it("CRITICAL: b0.18 (CRM v6.20) - an accepted office quote says its dates aren't held until the payment goes through", () => {
+    expect(payPageView({ ...PAGE, quoteAccepted: true }).hold).toBe(QUOTE_NOT_HELD);
+    expect(QUOTE_NOT_HELD).toMatch(/aren't held until your payment goes through/);
+    // Its guest back on the page while their own hold is live: the time, as Path B.
+    expect(payPageView({ ...PAGE, quoteAccepted: true, holdUntil: "2026-09-26T20:35:00Z" }).hold).toMatch(/until 3:35 PM \(Central\)/);
+    // Anything but true is not a quote.
+    expect(payPageView({ ...PAGE, quoteAccepted: "yes" }).hold).toBe("");
   });
 
   it("an option it does not know, or one with a broken amount, is not shown", () => {

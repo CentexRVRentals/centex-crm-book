@@ -6,6 +6,7 @@ import Camper from "./pages/Camper.jsx";
 import Requested from "./pages/Requested.jsx";
 import Paid from "./pages/Paid.jsx";
 import Pay from "./pages/Pay.jsx";
+import OfficeQuote from "./pages/OfficeQuote.jsx";
 import "./theme.css";
 
 // REAL URLS FROM THE START. /camper/:unitId rather than component state.
@@ -27,6 +28,10 @@ export default function App() {
         {/* b0.12 — choose how to pay, from the approval text. The token is
             signed by the CRM and is the page's only credential; see Pay.jsx. */}
         <Route path="/pay/:token" element={<Pay />} />
+        {/* b0.18 (CRM v6.20) — an office quote, from the Quote Text. Signed
+            by the CRM like the pay page; accepting books it and moves on to
+            /pay. See OfficeQuote.jsx. */}
+        <Route path="/quote/:token" element={<OfficeQuote />} />
         <Route path="*" element={<NotFound what="page" />} />
       </Routes>
     </BrowserRouter>

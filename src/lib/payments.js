@@ -156,6 +156,11 @@ export function holdLine(holdUntil) {
   return `We're holding these dates for you until ${time} (Central). Finish paying before then to book them.`;
 }
 
+// b0.18 (CRM v6.20) - an office quote the guest accepted and has not paid:
+// paying is what books it, and nothing holds the dates before then (Jesse,
+// 09-26). Shown when there is no live hold to name a time for.
+export const QUOTE_NOT_HELD = "You've accepted this quote. Your dates aren't held until your payment goes through — pay now to book them.";
+
 // The page as sentences. `words` comes from the server (balanceVerb,
 // securityVerb) so the day the CRM's charger ships, the page stops saying
 // "is due" and starts saying what really happens without a release here.
@@ -208,7 +213,8 @@ export function payPageView(page) {
   return {
     reservationNum: typeof p.reservationNum === "string" ? p.reservationNum : "",
     // b0.17 - "" unless this is a Book-and-pay guest's hold.
-    hold: holdLine(p.holdUntil),
+    // b0.18 - or an accepted office quote, whose dates are not held yet.
+    hold: holdLine(p.holdUntil) || (p.quoteAccepted === true ? QUOTE_NOT_HELD : ""),
     trip: [typeof p.unitName === "string" ? p.unitName : "", dates].filter(Boolean).join(" · "),
     ...payItems(p.quote),
     total: usd(p.totalCents),

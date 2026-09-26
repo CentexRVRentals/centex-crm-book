@@ -208,6 +208,28 @@ export const FUNCTIONS = {
     // sentence. The gateway's 401 (no --no-verify-jwt) carries no `error`.
     probe: { body: { action: "show", token: "contract.check" }, status: 401, key: "error" },
   },
+
+  // b0.18 (CRM v6.20) - an office quote (/quote/:token). Deployed
+  // --no-verify-jwt like payment-options: the signed token is the credential.
+  //   show    what the page displays; a quote whose dates went or whose start
+  //           passed answers 410 with `expired: true` and the guest's sentence
+  //   accept  books it (Future at once - the office's quote is the approval)
+  //           and answers `payToken`, the pay page's own token, or "" with
+  //           `payProblem` when online payment is off
+  "quote-page": {
+    why: "an office quote: what it costs, and accepting it books it",
+    method: "POST",
+    sends: ["action", "token"],
+    returns: [
+      "ok", "accepted", "reservationNum", "unitName", "start", "end", "method", "quote", "totalCents",
+      "payToken", "payProblem", "expired", "error",
+    ],
+    quote: {
+      returns: ["items", "subtotalCents", "taxCents"],
+      payLine: ["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents"],
+    },
+    probe: { body: { action: "show", token: "contract.check" }, status: 401, key: "error" },
+  },
 };
 
 // ----------------------------------------------------------------------------
