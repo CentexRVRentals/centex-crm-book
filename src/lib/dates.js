@@ -16,10 +16,15 @@
 //   statuses block a date is public_listing_busy_dates, one view both sides
 //   read. Minimum nights is a column on the listing.
 //
-// WHAT IS LEFT IS ONE DECISION: is a check-out day bookable? The server says
-// no — a busy range is inclusive at both ends, because the site does not
-// collect pickup and dropoff times and refusing a bookable night is safer than
-// accepting an unbookable one.
+// WHAT IS LEFT IS ONE DECISION: is a check-out day bookable? From b0.19 (CRM
+// v6.21) THE CAMPER DECIDES, on the server: public_listing_busy_dates
+// publishes each trip already widened by the camper's prep days, or narrowed
+// by a day each side when it allows same-day turnovers. So this file's test
+// stays inclusive at both ends and never needs to know which camper allows
+// what - the ranges it is handed already say. (Before b0.19 the server
+// refused every check-out day, because the site does not collect pickup and
+// dropoff times; a camper set to "with manual approval" now sends such a
+// booking to the office as a request instead.)
 //
 // **If this file disagrees with the server about that, a guest is offered a
 // date and then refused it.** That is the entire risk of the duplication, and
@@ -62,12 +67,14 @@ export function todayCentral(now = new Date()) {
 }
 
 // ----------------------------------------------------------------------------
-// THE ONE DECISION. Inclusive at both ends.
+// THE ONE DECISION. Inclusive at both ends - of the ranges AS PUBLISHED.
 // ----------------------------------------------------------------------------
-// A busy range of Nov 2–6 makes ALL of 2,3,4,5,6 unavailable — including the
-// 6th, the day the previous guest brings it back. The office can still take a
-// same-day turnaround by hand when the times work; this site cannot know the
-// times, so it does not offer the day.
+// A busy range of Nov 2–6 makes ALL of 2,3,4,5,6 unavailable. From b0.19 the
+// range is the camper's: a trip of Nov 2–6 on a camper that allows same-day
+// turnovers is published as Nov 3–5 (the 6th free to start on, the 2nd free to
+// end on); on a camper needing a prep day after, as Nov 1–7. A one-night trip
+// on a same-day camper publishes from > through: still refused by this test
+// for any overlapping stay, and no day greyed for it.
 export function overlapsBusy(start, end, busy) {
   if (!isIsoDate(start) || !isIsoDate(end)) return false;
   return (busy || []).some((b) => b && start <= b.through && b.from <= end);
