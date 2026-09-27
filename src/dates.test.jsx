@@ -13,6 +13,9 @@
 // the same way on both sides passes conformance and fails here.
 
 import { describe, it, expect } from "vitest";
+import React, { act, useState } from "react";
+import { createRoot } from "react-dom/client";
+import DatePicker from "./components/DatePicker.jsx";
 import {
   isIsoDate, nightsBetween, addDays, overlapsBusy, busyDaySet,
   checkDates, monthGrid, todayCentral,
@@ -53,6 +56,70 @@ describe("b0.23 - a refused start day says why", () => {
   it("the day as the guest reads it", () => {
     expect(shortDay("2026-11-02")).toBe("Mon, Nov 2");
     expect(shortDay("2027-01-10")).toBe("Sun, Jan 10");
+  });
+});
+
+// b0.24 (CRM v6.34, S4 R8 #9) - the sentence where the guest is: the CALENDAR.
+// Found live on 09-27: tapping the day before a busy range greyed every later
+// day and said "now tap your return day", so b0.23's sentence never showed.
+describe("b0.24 - the calendar says why at the first tap", () => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const today = todayCentral();
+  const start = addDays(today, 20);
+  const range = { from: addDays(start, 1), through: addDays(start, 3) };
+  const later = addDays(start, 6);
+
+  function mount() {
+    function Harness() {
+      const [value, setValue] = useState({ start: "", end: "" });
+      return <DatePicker listing={{ minimumNights: 1 }} busy={[range]} value={value} onChange={setValue} />;
+    }
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(<Harness />));
+    const day = (iso) => {
+      for (let i = 0; i < 3 && !host.querySelector(`button[aria-label="${iso}"]`); i++) {
+        act(() => host.querySelector('button[aria-label="Next month"]').click());
+      }
+      return host.querySelector(`button[aria-label="${iso}"]`);
+    };
+    return { host, day, done: () => { act(() => root.unmount()); host.remove(); } };
+  }
+
+  it("CRITICAL: tapping the day before a busy range shows the server's sentence, not 'now tap your return day'", () => {
+    const { host, day, done } = mount();
+    const d = day(start);
+    expect(d.disabled).toBe(false);
+    act(() => d.click());
+    expect(host.textContent).toContain(busyRefusal(start, addDays(start, 1), [range]));
+    expect(host.textContent).toContain("so a trip can't start on");
+    expect(host.textContent).not.toContain("now tap your return day");
+    done();
+  });
+
+  it("CRITICAL: after that tap a later free day is tappable and starts again", () => {
+    const { host, day, done } = mount();
+    const first = day(start);
+    act(() => first.click());
+    const next = day(later);
+    expect(next.disabled).toBe(false);
+    act(() => next.click());
+    expect(host.textContent).toContain("now tap your return day");
+    expect(host.textContent).not.toContain("so a trip can't start on");
+    // Busy days stay greyed throughout.
+    expect(day(range.from).disabled).toBe(true);
+    done();
+  });
+
+  it("an ordinary start is unchanged: later days past the busy range stay unreachable", () => {
+    const { host, day, done } = mount();
+    const ordinary = day(addDays(start, -2));
+    act(() => ordinary.click());
+    expect(host.textContent).toContain("now tap your return day");
+    expect(day(start).disabled).toBe(false);
+    expect(day(later).disabled).toBe(true);
+    done();
   });
 });
 

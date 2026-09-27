@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   monthGrid, MONTH_NAMES, busyDaySet, todayCentral,
-  addDays, nightsBetween, checkDates,
+  addDays, nightsBetween, checkDates, busyRefusal,
 } from "../lib/dates.js";
 
 // The calendar. Busy days are not clickable, so a guest cannot pick a week
@@ -29,11 +29,21 @@ export default function DatePicker({ listing, busy, value, onChange }) {
     ? checkDates({ start, end, busy, minimumNights: listing.minimumNights, today })
     : null;
 
+  // b0.24 (CRM v6.34, S4 R8 #9) - A START WITH NOTHING AFTER IT. The day just
+  // before a busy range is not greyed (a trip can END on it), but picked as a
+  // start every later day is unreachable, so b0.23's sentence - shown only once
+  // there are two dates - never appeared: the guest read "now tap your return
+  // day" over a greyed month. Now the sentence shows the moment that day is
+  // tapped, and the next tap anywhere starts again (no later day stays
+  // disabled for a start that cannot close).
+  const deadStart = Boolean(start && !end && busyDays.has(addDays(start, 1)));
+  const deadStartWhy = deadStart ? busyRefusal(start, addDays(start, 1), busy) : "";
+
   function pick(iso) {
     if (busyDays.has(iso) || iso < today) return;
     // No start yet, or a completed range, or a click before the start: begin
     // again from here. Anything else closes the range.
-    if (!start || (start && end) || iso < start) return onChange({ start: iso, end: "" });
+    if (!start || (start && end) || iso < start || deadStart) return onChange({ start: iso, end: "" });
     if (iso === start) return onChange({ start: iso, end: "" });
     onChange({ start, end: iso });
   }
@@ -68,7 +78,7 @@ export default function DatePicker({ listing, busy, value, onChange }) {
           const isBusy = busyDays.has(c.iso);
           // A day that cannot close a valid range is shown unavailable too —
           // otherwise a guest picks it and the button silently never enables.
-          const unreachable = Boolean(start && !end && c.iso > start && !spanIsClear(start, c.iso));
+          const unreachable = Boolean(start && !end && !deadStart && c.iso > start && !spanIsClear(start, c.iso));
           const disabled = past || isBusy || unreachable;
           const selected = c.iso === start || c.iso === end;
           const between = Boolean(start && end && c.iso > start && c.iso < end);
@@ -101,6 +111,10 @@ export default function DatePicker({ listing, busy, value, onChange }) {
       <div className="cal-summary">
         {!start ? (
           <p className="card-meta">Tap a day to start.</p>
+        ) : deadStartWhy ? (
+          <ul className="cal-errors">
+            <li>{deadStartWhy}</li>
+          </ul>
         ) : !end ? (
           <p className="card-meta">Pick-up {pretty(start)} — now tap your return day.</p>
         ) : (
