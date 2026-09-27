@@ -25,7 +25,7 @@
 // accepts, and the quote's prices are the ones the office saved.
 
 import { lineDetail, lineLabel, readPayQuote } from "./quote.js";
-import { shortDate, usd } from "./payments.js";
+import { lineUsd, shortDate, usd } from "./payments.js";
 
 const apiUrl = () => import.meta.env.VITE_SUPABASE_URL;
 
@@ -115,7 +115,7 @@ export function officeQuoteView(page) {
     reservationNum: typeof p.reservationNum === "string" ? p.reservationNum : "",
     trip: [typeof p.unitName === "string" ? p.unitName : "", dates].filter(Boolean).join(" · "),
     how: p.method === "delivery" ? "Delivered to you" : "Picked up from our lot in Kyle",
-    items: q ? q.items.map((l, i) => ({ key: `${l.kind}-${l.addonId || ""}-${i}`, kind: l.kind, label: lineLabel(l), detail: lineDetail(l), amount: usd(l.amountCents) })) : [],
+    items: q ? q.items.map((l, i) => ({ key: `${l.kind}-${l.addonId || ""}-${i}`, kind: l.kind, label: lineLabel(l), detail: lineDetail(l), amount: lineUsd(l.amountCents) })) : [],
     subtotal: q && q.taxCents > 0 ? usd(q.subtotalCents) : "",
     tax: q && q.taxCents > 0 ? usd(q.taxCents) : "",
     total: usd(p.totalCents),

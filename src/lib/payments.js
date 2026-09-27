@@ -122,6 +122,13 @@ export function usd(cents) {
   return `$${dollars}.${String(cents % 100).padStart(2, "0")}`;
 }
 
+// b0.21 (CRM v6.31) - a quote item's amount: usd, and a coupon's "-$45.00".
+// usd itself stays positive-only: every other figure on the page is money
+// owed or paid, and a minus there would be a bug, not a discount.
+export function lineUsd(cents) {
+  return Number.isInteger(cents) && cents < 0 ? `-${usd(-cents)}` : usd(cents);
+}
+
 // "2026-10-02" -> "Friday, October 2". The CRM's pay-page rules format the
 // same way; this is this repo's own copy, because the two share no code.
 export function longDate(iso) {
@@ -153,7 +160,7 @@ function payItems(raw) {
       kind: l.kind,
       label: lineLabel(l),
       detail: lineDetail(l),
-      amount: usd(l.amountCents),
+      amount: lineUsd(l.amountCents),
     })),
     subtotal: q.taxCents > 0 ? usd(q.subtotalCents) : "",
     tax: q.taxCents > 0 ? usd(q.taxCents) : "",

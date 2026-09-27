@@ -242,7 +242,8 @@ describe("the contract itself is well formed", () => {
     expect(rb.quote.line).toEqual(["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents", "miles"]);
     // No tax rate ever reaches the guest (CRM: publicQuote sends amounts only).
     expect(JSON.stringify(rb.quote)).not.toMatch(/rate/i);
-    expect(rb.quote.kinds).toEqual(["rental", "prep", "addon", "delivery", "tax"]);
+    // b0.21 (CRM v6.31) - and "coupon", the one line whose amount is below zero.
+    expect(rb.quote.kinds).toEqual(["rental", "prep", "addon", "delivery", "tax", "coupon"]);
   });
 
   // b0.16 (CRM v6.09) - the pay page's items are part of the contract too.

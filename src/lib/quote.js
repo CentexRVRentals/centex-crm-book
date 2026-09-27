@@ -67,6 +67,8 @@ export function readQuote(body, { requireFlag = true } = {}) {
   const lines = [];
   for (const l of body.lines) {
     if (!l || !kinds.includes(l.kind) || !Number.isInteger(l.amountCents)) return null;
+    // b0.21 - a coupon line is the one line below zero; no other may be.
+    if (l.amountCents < 0 && l.kind !== "coupon") return null;
     lines.push({
       kind: l.kind,
       label: typeof l.label === "string" ? l.label : "",
@@ -99,7 +101,8 @@ export function readPayQuote(q) {
   const kinds = FUNCTIONS["request-booking"].quote.kinds.filter((k) => k !== "tax");
   const items = [];
   for (const l of q.items) {
-    if (!l || !kinds.includes(l.kind) || !Number.isInteger(l.amountCents) || l.amountCents < 0) return null;
+    // b0.21 (CRM v6.31) - a coupon line is the one item below zero.
+    if (!l || !kinds.includes(l.kind) || !Number.isInteger(l.amountCents) || (l.amountCents < 0 && l.kind !== "coupon")) return null;
     items.push({
       kind: l.kind,
       label: typeof l.label === "string" ? l.label : "",

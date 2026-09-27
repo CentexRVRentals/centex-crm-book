@@ -174,7 +174,11 @@ export const FUNCTIONS = {
       // but "book" (an older server included) is a request.
       returns: ["ok", "quote", "lines", "subtotalCents", "taxCents", "totalCents", "errors", "path"],
       line: ["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents", "miles"],
-      kinds: ["rental", "prep", "addon", "delivery", "tax"],
+      // b0.21 (CRM v6.31): + "coupon" - a coupon code's discount, one line
+      // after the items with a NEGATIVE amountCents (the only line that may
+      // be). The pay page and the office-quote page show it from b0.21; the
+      // quote box here only once the site takes a code (b0.22, CRM v6.32).
+      kinds: ["rental", "prep", "addon", "delivery", "tax", "coupon"],
     },
   },
 

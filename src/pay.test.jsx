@@ -185,6 +185,24 @@ describe("b0.16 - the itemised pay page", () => {
     expect(payPageView({ ...ITEMISED, quote: tax }).items).toEqual([]);
   });
 
+  // b0.21 (CRM v6.31) - a coupon code on the quote: one line, after the
+  // items, with its minus sign; the items still add up to the Subtotal.
+  it("CRITICAL: a coupon shows as one line with a minus sign, and the list still adds up", () => {
+    const withCoupon = {
+      ...QUOTE,
+      items: [...QUOTE.items, { kind: "coupon", label: "Coupon SUMMER10 (10% off the rental)", addonId: null, quantity: 1, nights: null, unitPriceCents: null, amountCents: -3870 }],
+      subtotalCents: 79700 - 3870,
+    };
+    const v = payPageView({ ...ITEMISED, quote: withCoupon, totalCents: 86276 - 3870 - 319 });
+    expect(v.items.map((i) => [i.label, i.detail, i.amount]).pop()).toEqual(["Coupon SUMMER10 (10% off the rental)", "", "-$38.70"]);
+    expect(v.subtotal).toBe("$758.30");
+  });
+
+  it("CRITICAL: only a coupon may be below zero - any other negative line drops the list, as before", () => {
+    const negative = { ...QUOTE, items: [...QUOTE.items.slice(0, 3), { ...QUOTE.items[3], amountCents: -1 }], subtotalCents: 79700 - 28500 - 1 };
+    expect(payPageView({ ...ITEMISED, quote: negative }).items).toEqual([]);
+  });
+
   it("CRITICAL: rendered - the items above the Total, and the choices unchanged", async () => {
     fetchMock.mockResolvedValue(answer(200, ITEMISED));
     const m = await mountPay();

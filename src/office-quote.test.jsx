@@ -121,6 +121,16 @@ describe("the words", () => {
     expect([v.subtotal, v.tax, v.total]).toEqual(["$500.00", "$37.13", "$537.13"]);
   });
 
+  it("b0.21 (CRM v6.31) - an office quote with a coupon code: the coupon line, minus sign and all", () => {
+    const quote = {
+      items: [...PAGE.quote.items, { kind: "coupon", label: "Coupon FALL-15 ($50 off)", addonId: null, quantity: 1, nights: null, unitPriceCents: null, amountCents: -5000 }],
+      subtotalCents: PAGE.quote.subtotalCents - 5000, taxCents: PAGE.quote.taxCents,
+    };
+    const v = officeQuoteView({ ...PAGE, quote, totalCents: PAGE.totalCents - 5000 });
+    expect(v.items.map((l) => [l.label, l.detail, l.amount]).pop()).toEqual(["Coupon FALL-15 ($50 off)", "", "-$50.00"]);
+    expect(v.total).toBe("$487.13");
+  });
+
   it("CRITICAL: paid is booked; accepted alone is not (b0.18, CRM v6.20)", () => {
     expect(officeQuoteView(PAGE)).toMatchObject({ accepted: false, paid: false, payPath: "" });
     expect(officeQuoteView({ ...PAGE, accepted: true, paid: false, payToken: "a.b" })).toMatchObject({ accepted: true, paid: false, payPath: "/pay/a.b" });
