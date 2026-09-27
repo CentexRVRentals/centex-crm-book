@@ -16,7 +16,7 @@ import { MemoryRouter, Routes, Route, useParams } from "react-router-dom";
 import { addDays, todayCentral } from "./lib/dates.js";
 import { QUOTE_DEBOUNCE_MS, quoteBooking } from "./lib/quote.js";
 import { buildPayload, requestBooking } from "./lib/request.js";
-import { holdLine, payPageView } from "./lib/payments.js";
+import { holdLine, OUTCOMES, payPageView } from "./lib/payments.js";
 import { FUNCTIONS } from "./lib/contract.js";
 
 let TABLES = {};
@@ -33,7 +33,7 @@ vi.mock("./lib/supabase.js", () => {
 });
 const { default: Camper } = await import("./pages/Camper.jsx");
 const { default: Requested } = await import("./pages/Requested.jsx");
-const { default: Paid } = await import("./pages/Paid.jsx");
+const { default: Paid, OUTCOME_WORDS, POLL_LIMIT, POLL_MS } = await import("./pages/Paid.jsx");
 const { default: Pay } = await import("./pages/Pay.jsx");
 
 const LISTING = { unit_id: "CHARLIE", name: "Charlie", price_per_night: 109, minimum_nights: 2 };
@@ -273,10 +273,15 @@ describe("where Stripe returns a Book-and-pay guest", () => {
     return out;
   };
 
-  it("CRITICAL: paid - 'You're booked'", () => {
+  // b0.20 (CRM v6.26) - NEVER "YOU'RE BOOKED" ON A GUESS. Without the pay
+  // token (a page opened before this release) the page cannot ask, so it says
+  // the payment arrived and that a text will confirm the booking.
+  it("CRITICAL: back from Stripe with no token - 'Payment received', and NOT 'You're booked'", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => reply({})));
     const r = render("/paid/WEB-1?booked=1");
-    expect(r.h1).toBe("You're booked");
-    expect(r.text).toContain("the camper is yours");
+    expect(r.h1).toBe("Payment received");
+    expect(r.text).toContain("confirming your booking");
+    expect(r.text).not.toContain("the camper is yours");
     expect(r.text).toContain("WEB-1");
   });
 
@@ -287,10 +292,112 @@ describe("where Stripe returns a Book-and-pay guest", () => {
     expect(r.text).not.toContain("payment link in your text still works");
   });
 
+  it("CRITICAL: an approved guest's return never asks the server", () => {
+    const fetch = vi.fn(async () => reply({ outcome: "taken" }));
+    vi.stubGlobal("fetch", fetch);
+    expect(render("/paid/WEB-1?t=tok.sig").h1).toBe("Payment received");
+    expect(render("/paid/WEB-1?booked=1&t=tok.sig&cancelled=1").h1).toBe("Nothing was charged");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("an approved guest's return reads exactly as before", () => {
     expect(render("/paid/WEB-1").h1).toBe("Payment received");
     const c = render("/paid/WEB-1?cancelled=1");
     expect(c.h1).toBe("Nothing was charged");
     expect(c.text).toContain("payment link in your text still works");
+  });
+});
+
+// ============================================================================
+// b0.20 (CRM v6.26) - CONFIRMING YOUR BOOKING (Jesse, 09-26)
+// ============================================================================
+describe("the Confirming screen", () => {
+  function mount(url) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<MemoryRouter initialEntries={[url]}><Routes><Route path="/paid/:reservationNum" element={<Paid />} /></Routes></MemoryRouter>);
+    });
+    return {
+      h1: () => host.querySelector("h1").textContent,
+      text: () => host.textContent,
+      done: () => { act(() => root.unmount()); host.remove(); },
+    };
+  }
+  const answers = (...list) => {
+    const fetch = vi.fn(async (url, init) => reply({ outcome: list.length > 1 ? list.shift() : list[0] }));
+    vi.stubGlobal("fetch", fetch);
+    return fetch;
+  };
+
+  it("CRITICAL: asks with the pay token, shows Confirming, then You're booked", async () => {
+    vi.useFakeTimers();
+    const fetch = answers("confirming", "confirming", "booked");
+    const page = mount("/paid/WEB-1?booked=1&t=tok.sig");
+    expect(page.h1()).toBe("Confirming your booking…");
+    expect(page.text()).not.toContain("the camper is yours");
+    await flush();
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ action: "outcome", token: "tok.sig" });
+    expect(String(fetch.mock.calls[0][0])).toMatch(/\/functions\/v1\/payment-options$/);
+    for (let i = 0; i < 2; i++) { await act(async () => { vi.advanceTimersByTime(POLL_MS); }); await flush(); }
+    expect(page.h1()).toBe("You're booked");
+    expect(page.text()).toContain("the camper is yours");
+    expect(fetch).toHaveBeenCalledTimes(3);
+    page.done();
+  });
+
+  it("CRITICAL: dates taken - 'Those dates were just taken', card not charged", async () => {
+    answers("taken");
+    const page = mount("/paid/WEB-1?booked=1&t=tok.sig");
+    await flush();
+    expect(page.h1()).toBe("Those dates were just taken");
+    expect(page.text()).toContain("Your card was not charged.");
+    expect(page.text()).not.toContain("Stripe emails your receipt");
+    page.done();
+  });
+
+  it("CRITICAL: could not confirm - not charged, try again in 30 minutes", async () => {
+    answers("retry");
+    const page = mount("/paid/WEB-1?booked=1&t=tok.sig");
+    await flush();
+    expect(page.h1()).toBe("We couldn't confirm your booking");
+    expect(page.text()).toContain("Your card was not charged. Please try again in 30 minutes");
+    page.done();
+  });
+
+  it("CRITICAL: an answer it does not know, or no answer, is still confirming - never booked", async () => {
+    vi.useFakeTimers();
+    answers("banana");
+    const page = mount("/paid/WEB-1?booked=1&t=tok.sig");
+    await flush();
+    expect(page.h1()).toBe("Confirming your booking…");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
+    await act(async () => { vi.advanceTimersByTime(POLL_MS); }); await flush();
+    expect(page.h1()).toBe("Confirming your booking…");
+    page.done();
+  });
+
+  it("CRITICAL: it stops asking after POLL_LIMIT tries and says a text will follow", async () => {
+    vi.useFakeTimers();
+    const fetch = answers("confirming");
+    const page = mount("/paid/WEB-1?booked=1&t=tok.sig");
+    await flush();
+    for (let i = 0; i < POLL_LIMIT + 3; i++) { await act(async () => { vi.advanceTimersByTime(POLL_MS); }); await flush(); }
+    expect(fetch).toHaveBeenCalledTimes(POLL_LIMIT);
+    expect(page.h1()).toBe("Still confirming your booking");
+    expect(page.text()).toContain("your card is only charged once the booking is confirmed");
+    page.done();
+  });
+
+  it("every screen's words say whether the card was charged", () => {
+    for (const key of ["taken", "retry"]) expect(OUTCOME_WORDS[key].p).toContain("Your card was not charged.");
+    expect(OUTCOME_WORDS.slow.p).toContain("only charged once the booking is confirmed");
+    expect(Object.keys(OUTCOME_WORDS).sort()).toEqual(["booked", "confirming", "retry", "slow", "taken", "untracked"]);
+    expect(OUTCOMES).toEqual(["confirming", "booked", "taken", "retry"]);
+  });
+
+  it("CRITICAL: the contract knows the outcome field", () => {
+    expect(FUNCTIONS["payment-options"].returns).toContain("outcome");
   });
 });

@@ -8,6 +8,7 @@
 //
 //   show    { action: "show", token }          -> what the page displays
 //   choose  { action: "choose", token, option } -> a Stripe Checkout URL
+//   outcome { action: "outcome", token }        -> b0.20: did the booking stand?
 //
 // ============================================================================
 // THE PAGE NEVER SAYS HOW MUCH
@@ -92,6 +93,22 @@ export async function choosePayment(token, option) {
     return { ok: false, error: UNREADABLE, unreadable: true };
   }
   return { ok: true, url };
+}
+
+// b0.20 (CRM v6.26) - THE CONFIRMING SCREEN'S QUESTION. A Book-and-pay
+// guest's card is only HELD when they pay; the booking stands or falls a
+// moment later, on the server. Stripe sends the guest back first, so /paid
+// asks - with the same signed token - until it hears one of:
+//   booked | taken | retry            (and "confirming" while it is deciding)
+// Anything else is treated as "still confirming": this page never says
+// "you're booked" on a guess (Jesse, 09-26).
+export const OUTCOMES = ["confirming", "booked", "taken", "retry"];
+
+export async function checkOutcome(token) {
+  const r = await call({ action: "outcome", token: String(token ?? "") });
+  if (!r.ok) return r;
+  const outcome = OUTCOMES.includes(r.data.outcome) ? r.data.outcome : "confirming";
+  return { ok: true, outcome };
 }
 
 // ----------------------------------------------------------------------------

@@ -198,6 +198,9 @@ export const FUNCTIONS = {
       // b0.17 (CRM v6.12): until when a Book-and-pay guest's dates are held
       // (ISO), or null for every other booking.
       "holdUntil",
+      // b0.20 (CRM v6.26): action "outcome" - confirming | booked | taken |
+      // retry, for /paid's Confirming screen.
+      "outcome",
     ],
     quote: {
       returns: ["items", "subtotalCents", "taxCents"],
