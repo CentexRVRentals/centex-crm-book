@@ -49,8 +49,11 @@ export default function Requested() {
           <div className="panel" style={{ textAlign: "left", marginTop: 16 }}>
             <h3>What we quoted</h3>
             <QuoteLines quote={state.quote} />
+            {/* b0.23 (Jesse, 09-27) - availability, not the price: the price
+                shown IS the price (CRM v6.32 saves a request only with its
+                priced lines). */}
             <p className="card-meta" style={{ margin: "8px 0 0" }}>
-              We'll confirm the price when we come back to you. Nothing has been charged.
+              We'll confirm availability. Nothing has been charged.
             </p>
           </div>
         ) : null}

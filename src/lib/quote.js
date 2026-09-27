@@ -20,8 +20,12 @@ const apiUrl = () => import.meta.env.VITE_SUPABASE_URL;
 // What the guest sees when a total could not be worked out. It does NOT stop
 // the request: the server re-prices every request anyway, and a guest who
 // cannot see a total can still ask for the dates.
+// b0.23 (CRM v6.34, Jesse 09-27) - "we'll confirm availability", not "the
+// price": since CRM v6.32 a request is saved only WITH its exact priced lines
+// (refused, with the reason, if they cannot be priced), so there is no price
+// left to confirm. The office still approves the dates.
 export const QUOTE_UNAVAILABLE =
-  "We couldn't work out a total just now. You can still send the request — we'll confirm the price.";
+  "We couldn't work out a total just now. You can still send the request — we'll confirm availability.";
 
 // b0.16 (CRM v6.09) - delivery ticked, address not all there yet. No price is
 // asked for: a delivery is priced by the mile or not at all, and the miles

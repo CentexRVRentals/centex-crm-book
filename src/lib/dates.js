@@ -98,6 +98,33 @@ export function busyDaySet(busy) {
   return days;
 }
 
+// b0.23 (CRM v6.34, S4 R8 #9) - WHY THE DATES WERE REFUSED, when the calendar
+// did not show it. A day just before a busy range is not greyed - a trip can
+// END on it - but a trip cannot START on it: its first night is the range's
+// first day. On a same-day camper that day is another trip's pick-up day, and
+// "Those dates have just been taken" named nothing the guest could see.
+// Every other overlap crosses a greyed day and keeps that sentence. The CRM's
+// _shared/booking-request.ts busyRefusal is the server's copy, word for word:
+// dates.test.jsx here and booking-request-validation.test.js there check the
+// same ranges against the same sentences.
+export const DATES_TAKEN = "Those dates have just been taken. Please pick another week.";
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function shortDay(iso) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return `${WEEKDAYS[d.getUTCDay()]}, ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+export function busyRefusal(start, end, busy) {
+  if (!overlapsBusy(start, end, busy)) return "";
+  const ranges = (busy || []).filter(Boolean);
+  const dayAfter = addDays(start, 1);
+  const startFree = !ranges.some((b) => b.from <= start && start <= b.through);
+  if (startFree && ranges.some((b) => b.from === dayAfter)) {
+    return `This camper is booked from ${shortDay(dayAfter)}, so a trip can't start on ${shortDay(start)} — it can end that day. Please pick another start date.`;
+  }
+  return DATES_TAKEN;
+}
+
 // ----------------------------------------------------------------------------
 // The verdict
 // ----------------------------------------------------------------------------
@@ -130,9 +157,8 @@ export function checkDates({ start, end, busy, minimumNights, today }) {
     errors.push(`This camper has a ${min}-night minimum.`);
   }
 
-  if (overlapsBusy(start, end, busy)) {
-    errors.push("Those dates have just been taken. Please pick another week.");
-  }
+  const busyWhy = busyRefusal(start, end, busy);
+  if (busyWhy) errors.push(busyWhy);
 
   return { ok: errors.length === 0, errors, nights };
 }

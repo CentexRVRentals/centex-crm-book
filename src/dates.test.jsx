@@ -16,11 +16,45 @@ import { describe, it, expect } from "vitest";
 import {
   isIsoDate, nightsBetween, addDays, overlapsBusy, busyDaySet,
   checkDates, monthGrid, todayCentral,
-  MAX_NIGHTS, MAX_ADVANCE_DAYS,
+  MAX_NIGHTS, MAX_ADVANCE_DAYS, busyRefusal, shortDay, DATES_TAKEN,
 } from "./lib/dates.js";
 
 const TODAY = "2026-09-09";
 const busy = [{ from: "2026-11-02", through: "2026-11-06" }];
+
+// b0.23 (CRM v6.34, S4 R8 #9) - the SAME ranges and sentences as the CRM's
+// booking-request-validation.test.js: the site and the server say one thing.
+describe("b0.23 - a refused start day says why", () => {
+  // A same-day camper's Nov 2-6 trip, as the view publishes it: Nov 3-5.
+  const sameDay = [{ from: "2026-11-03", through: "2026-11-05" }];
+  const WHY = "This camper is booked from Tue, Nov 3, so a trip can't start on Mon, Nov 2 — it can end that day. Please pick another start date.";
+
+  it("CRITICAL: the other trip's pick-up day (not greyed) as a start names the day it is booked from", () => {
+    expect(busyRefusal("2026-11-02", "2026-11-04", sameDay)).toBe(WHY);
+    expect(busyRefusal("2026-11-02", "2026-11-09", sameDay)).toBe(WHY);
+    expect(checkDates({ start: "2026-11-02", end: "2026-11-04", busy: sameDay, today: TODAY }).errors).toEqual([WHY]);
+  });
+
+  it("CRITICAL: an overlap that crosses a greyed day keeps the plain sentence", () => {
+    expect(busyRefusal("2026-10-30", "2026-11-04", sameDay)).toBe(DATES_TAKEN);
+    expect(busyRefusal("2026-11-04", "2026-11-08", sameDay)).toBe(DATES_TAKEN);
+    // A start day that is itself taken, with another trip from the next day: greyed, so the plain sentence.
+    const backToBack = [...sameDay, { from: "2026-11-06", through: "2026-11-08" }];
+    expect(busyRefusal("2026-11-05", "2026-11-07", backToBack)).toBe(DATES_TAKEN);
+    expect(DATES_TAKEN).toBe("Those dates have just been taken. Please pick another week.");
+  });
+
+  it("no overlap, no sentence - ending on that day is fine, and so is starting after the trip", () => {
+    expect(busyRefusal("2026-10-30", "2026-11-02", sameDay)).toBe("");
+    expect(busyRefusal("2026-11-06", "2026-11-08", sameDay)).toBe("");
+    expect(busyRefusal("2026-11-02", "2026-11-04", [])).toBe("");
+  });
+
+  it("the day as the guest reads it", () => {
+    expect(shortDay("2026-11-02")).toBe("Mon, Nov 2");
+    expect(shortDay("2027-01-10")).toBe("Sun, Jan 10");
+  });
+});
 
 describe("dates parse the way the database stores them", () => {
   it("CRITICAL: only real YYYY-MM-DD calendar dates", () => {

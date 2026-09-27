@@ -403,6 +403,9 @@ describe("the quote box", () => {
     await tick();
     expect(m.host.textContent).toContain(QUOTE_UNAVAILABLE);
     expect(QUOTE_UNAVAILABLE).toMatch(/still send the request/);
+    // b0.23 (Jesse, 09-27) - a saved request is priced exactly; availability is what waits.
+    expect(QUOTE_UNAVAILABLE).toMatch(/we'll confirm availability\.$/);
+    expect(QUOTE_UNAVAILABLE).not.toMatch(/confirm the price/);
     m.cleanup();
   });
 
@@ -549,7 +552,9 @@ describe("the confirmation shows what was quoted", () => {
     expect(m.host.textContent).toContain("What we quoted");
     expect(m.host.textContent).toContain("$741.23");
     const panel = [...m.host.querySelectorAll(".panel")].find((p) => p.textContent.includes("What we quoted"));
-    expect(panel.textContent).toMatch(/confirm the price/);
+    // b0.23 - availability, not the price (Jesse, 09-27).
+    expect(panel.textContent).toMatch(/We'll confirm availability\. Nothing has been charged\./);
+    expect(panel.textContent).not.toMatch(/confirm the price/);
     // Not a price the guest has been promised, and not a charge.
     expect(panel.textContent).not.toMatch(/\bbooked\b|is confirmed|your price is|charged to/i);
     m.cleanup();
