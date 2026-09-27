@@ -1,5 +1,5 @@
 import { FUNCTIONS } from "./contract.js";
-import { readQuote } from "./quote.js";
+import { couponCode, readQuote } from "./quote.js";
 
 // THE ONLY WRITE THIS SITE MAKES.
 //
@@ -127,7 +127,11 @@ export async function requestBooking(payload) {
 // b0.17 - `book` is ALWAYS a boolean: true only when the guest pressed Book and
 // pay. The server compares it to `true`, so the blank-fill below must never
 // reach it - "" would read as a request, which is safe but not what was asked.
-export function buildPayload({ unitId, dates, guest, delivery, addons, book = false }) {
+//
+// b0.22 (CRM v6.32) - `coupon` is the code the guest applied, or "". A code
+// the server will not take refuses the whole request with its sentence, so
+// the quote box clears a code the server said does not apply.
+export function buildPayload({ unitId, dates, guest, delivery, addons, book = false, coupon = "" }) {
   const wants = FUNCTIONS["request-booking"].sends;
   const payload = {
     unitId,
@@ -146,6 +150,7 @@ export function buildPayload({ unitId, dates, guest, delivery, addons, book = fa
     company: guest.company || "",
     addons: Array.isArray(addons) ? addons : [],
     book: book === true,
+    coupon: couponCode(coupon),
   };
   // Every field the contract says this endpoint accepts is present, even when
   // blank. A missing key and an empty one are the same to the server, but a

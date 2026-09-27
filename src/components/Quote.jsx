@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  quoteBooking, lineLabel, lineDetail, lineAmount, totalAmount, itemLines, cents, deliveryDestination,
+  quoteBooking, lineLabel, lineDetail, lineAmount, totalAmount, itemLines, cents, deliveryDestination, couponCode,
   QUOTE_UNAVAILABLE, QUOTE_NEEDS_ADDRESS, QUOTE_DEBOUNCE_MS,
 } from "../lib/quote.js";
 
@@ -32,9 +32,27 @@ import {
 // answer for the request ON SCREEN arrives - a refusal or an unreadable answer
 // is "request" (the safe button: a request is never a promise) - and NOT while
 // one is on its way, so the button does not flicker as the guest types.
-export function QuoteBox({ unitId, dates, method, addons, destination = null, ready, inForm = false, debounceMs = QUOTE_DEBOUNCE_MS, onPath = null }) {
+//
+// b0.22 (CRM v6.32) - THE COUPON CODE. `coupon` is { code, error }, kept on the
+// camper page so the page's box and the form's box are the same code, and
+// `onCoupon` changes it. With `onCoupon`, the box ends with "Have a coupon
+// code?" (CouponLine). The applied code is part of what is asked. When the
+// server says it does not apply (`couponError`), the quote it sent is the
+// quote WITHOUT the code - so the box keeps that answer as the answer for no
+// code, clears the code (a request carrying it would be refused) and keeps
+// the server's sentence under the box until the guest tries again. Nothing is
+// asked twice for it.
+export function QuoteBox({
+  unitId, dates, method, addons, destination = null, ready, inForm = false, debounceMs = QUOTE_DEBOUNCE_MS, onPath = null,
+  coupon = null, onCoupon = null,
+}) {
   const dest = method === "delivery" ? deliveryDestination(destination) : null;
-  const key = JSON.stringify({ unitId, start: dates.start, end: dates.end, method, addons, destination: dest });
+  const code = couponCode(coupon?.code);
+  const keyFor = (c) => JSON.stringify({ unitId, start: dates.start, end: dates.end, method, addons, destination: dest, ...(c ? { coupon: c } : {}) });
+  const key = keyFor(code);
+  // The key an answer was stored under before it was asked for (a code the
+  // server did not take: its quote is the quote for no code).
+  const seeded = useRef(null);
   const [answer, setAnswer] = useState({ key: null, result: null });
   // The last good quote, shown dimmed while a new one is on its way, so the
   // box does not flash empty on every tick of a quantity.
@@ -44,6 +62,9 @@ export function QuoteBox({ unitId, dates, method, addons, destination = null, re
 
   useEffect(() => {
     if (!asking) return undefined;
+    const skip = seeded.current === key;
+    seeded.current = null;
+    if (skip) return undefined;
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
       let result;
@@ -55,6 +76,15 @@ export function QuoteBox({ unitId, dates, method, addons, destination = null, re
         result = { ok: false, unavailable: true };
       }
       if (result.aborted || ctrl.signal.aborted) return;
+      const asked = JSON.parse(key);
+      if (result.ok && result.couponError && asked.coupon && typeof onCoupon === "function") {
+        const bare = keyFor("");
+        seeded.current = bare;
+        setAnswer({ key: bare, result: { ...result, couponError: "" } });
+        setLastQuote(result.quote);
+        onCoupon({ code: "", error: result.couponError, tried: asked.coupon });
+        return;
+      }
       setAnswer({ key, result });
       if (result.ok) setLastQuote(result.quote);
     }, debounceMs);
@@ -93,6 +123,60 @@ export function QuoteBox({ unitId, dates, method, addons, destination = null, re
       ) : (
         <p className="card-meta" style={{ margin: 0 }}>{QUOTE_UNAVAILABLE}</p>
       )}
+      {typeof onCoupon === "function" ? (
+        <CouponLine coupon={coupon} onCoupon={onCoupon} applied={Boolean(current?.ok && current.quote.lines.some((l) => l.kind === "coupon"))} />
+      ) : null}
+    </div>
+  );
+}
+
+// b0.22 (CRM v6.32, Jesse 09-27) - "Have a coupon code?", a link that opens a
+// box with Apply. An applied code shows with Remove; the discount itself is
+// the quote's own coupon line above. A code the server did not take is back
+// in the box, with the server's sentence under it.
+export function CouponLine({ coupon, onCoupon, applied = false }) {
+  const code = couponCode(coupon?.code);
+  const error = typeof coupon?.error === "string" ? coupon.error : "";
+  const [open, setOpen] = useState(Boolean(error));
+  const [text, setText] = useState(coupon?.tried || "");
+  useEffect(() => {
+    if (error) { setOpen(true); setText(coupon?.tried || ""); }
+  }, [error, coupon?.tried]);
+
+  if (code) {
+    return (
+      <p className="coupon-line q-coupon-applied">
+        <span>{applied ? `Code ${code} applied` : `Code ${code}`}</span>
+        <button type="button" className="link" onClick={() => { setText(""); setOpen(false); onCoupon({ code: "", error: "" }); }}>Remove</button>
+      </p>
+    );
+  }
+  if (!open) {
+    return (
+      <p className="coupon-line">
+        <button type="button" className="link" onClick={() => setOpen(true)}>Have a coupon code?</button>
+      </p>
+    );
+  }
+  const apply = () => {
+    const next = couponCode(text);
+    if (next) onCoupon({ code: next, error: "" });
+  };
+  return (
+    <div className="coupon-line coupon-open">
+      <div className="coupon-row">
+        <input
+          aria-label="Coupon code"
+          value={text}
+          autoCapitalize="characters"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); apply(); } }}
+        />
+        <button type="button" className="btn ghost" onClick={apply} disabled={!couponCode(text)}>Apply</button>
+      </div>
+      {error ? <p className="coupon-error" role="alert">{error}</p> : null}
     </div>
   );
 }

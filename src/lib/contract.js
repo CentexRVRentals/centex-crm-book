@@ -115,10 +115,13 @@ export const FUNCTIONS = {
     // camper whose quote said `path: "book"`, false otherwise. It can only ever
     // NARROW to a request: the server books only when its own path for that
     // camper, today, is "book".
+    //
+    // b0.22 (CRM v6.32): `coupon` - the code the guest applied, or "". One that
+    // does not apply refuses the request with its sentence (errors).
     sends: [
       "unitId", "start", "end", "name", "email", "phone",
       "method", "guests", "address", "city", "state", "zip", "notes", "company",
-      "addons", "book",
+      "addons", "book", "coupon",
     ],
     // Returned. `errors` is an array of sentences written to be shown to a
     // guest verbatim — this site does not rewrite them, because the server is
@@ -169,10 +172,13 @@ export const FUNCTIONS = {
     // the per-rate tax lines are no longer sent. `tax` stays a known kind: this
     // site deploys BEFORE v6.09, and v6.08 still sends them (they are skipped).
     quote: {
-      sends: ["quote", "unitId", "start", "end", "method", "addons", "address", "city", "state", "zip"],
+      // b0.22 (CRM v6.32): + `coupon`, sent only when the guest applied one.
+      sends: ["quote", "unitId", "start", "end", "method", "addons", "address", "city", "state", "zip", "coupon"],
       // b0.17 (CRM v6.12): + `path` - which button the form shows. Anything
       // but "book" (an older server included) is a request.
-      returns: ["ok", "quote", "lines", "subtotalCents", "taxCents", "totalCents", "errors", "path"],
+      // b0.22 (CRM v6.32): + `couponError` - the code does not apply, in the
+      // server's words; the quote beside it is priced WITHOUT the code.
+      returns: ["ok", "quote", "lines", "subtotalCents", "taxCents", "totalCents", "errors", "path", "couponError"],
       line: ["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents", "miles"],
       // b0.21 (CRM v6.31): + "coupon" - a coupon code's discount, one line
       // after the items with a NEGATIVE amountCents (the only line that may

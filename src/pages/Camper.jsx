@@ -41,6 +41,11 @@ export default function Camper() {
   // form all read the one object, so what is ticked is what is priced is what
   // is sent.
   const [selections, setSelections] = useState({});
+  // b0.22 (CRM v6.32) - the coupon code, { code, error }: on the PAGE, so the
+  // quote box here and the one in the form are the same code, and what is
+  // priced is what is sent. `error` is the server's sentence for a code it
+  // did not take (the box clears the code then).
+  const [coupon, setCoupon] = useState({ code: "", error: "" });
 
   async function load() {
     setState({ status: "loading" });
@@ -58,7 +63,7 @@ export default function Camper() {
     }
   }
 
-  useEffect(() => { load(); setDates({ start: "", end: "" }); setRequesting(false); setSelections({}); }, [unitId]);
+  useEffect(() => { load(); setDates({ start: "", end: "" }); setRequesting(false); setSelections({}); setCoupon({ code: "", error: "" }); }, [unitId]);
 
   // Hooks cannot be called conditionally, so this runs on every render —
   // including while loading, when it falls back to the site default. That is
@@ -136,6 +141,8 @@ export default function Camper() {
                 busy={state.busy}
                 dates={dates}
                 addons={chosen}
+                coupon={coupon}
+                onCoupon={setCoupon}
                 initialPath={path}
                 onCancel={() => setRequesting(false)}
               />
@@ -144,7 +151,7 @@ export default function Camper() {
             <>
               <DatePicker listing={u} busy={state.busy} value={dates} onChange={setDates} />
               <AddonPicker items={state.addons} value={selections} onChange={setSelections} />
-              <QuoteBox unitId={u.unitId} dates={dates} method="pickup" addons={chosen} ready={datesOk} onPath={setPath} />
+              <QuoteBox unitId={u.unitId} dates={dates} method="pickup" addons={chosen} ready={datesOk} onPath={setPath} coupon={coupon} onCoupon={setCoupon} />
               {datesOk ? <RequestCta path={path} onStart={() => setRequesting(true)} /> : null}
             </>
           )}

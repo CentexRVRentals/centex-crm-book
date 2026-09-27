@@ -22,7 +22,7 @@ import path from "node:path";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 import {
-  addonsPayload, readQuote, quoteBooking, cents, lineDetail, lineAmount, totalAmount, deliveryDestination,
+  addonsPayload, readQuote, quoteBooking, couponCode, cents, lineDetail, lineAmount, totalAmount, deliveryDestination,
   QUOTE_UNAVAILABLE, QUOTE_DEBOUNCE_MS, ADDRESS_DEBOUNCE_MS, QUOTE_NEEDS_ADDRESS, ADDRESS_INCOMPLETE, readPayQuote,
 } from "./lib/quote.js";
 import { buildPayload, requestBooking } from "./lib/request.js";
@@ -697,5 +697,62 @@ describe("b0.14 - the box", () => {
     expect(m.host.querySelector(".q-taxsum")).toBeNull();
     expect(m.host.querySelector(".q-total").textContent).toBe("Total$701");
     m.cleanup();
+  });
+});
+
+// ----------------------------------------------------------------------------
+// b0.22 (CRM v6.32) - the coupon code
+// ----------------------------------------------------------------------------
+describe("b0.22 - a coupon code", () => {
+  it("is tidied the way the server reads one, and is nothing when blank", () => {
+    expect(couponCode(" summer 10 ")).toBe("SUMMER10");
+    expect(couponCode("")).toBe("");
+    expect(couponCode(null)).toBe("");
+    expect(couponCode(42)).toBe("");
+  });
+
+  it("CRITICAL: a quote sends it only when there is one - a key the contract names", async () => {
+    const spy = vi.fn(async () => reply(QUOTE_BODY));
+    vi.stubGlobal("fetch", spy);
+    await quoteBooking({ unitId: "u1", start: "a", end: "b", method: "pickup", addons: [], coupon: "summer10" });
+    await quoteBooking({ unitId: "u1", start: "a", end: "b", method: "pickup", addons: [], coupon: "  " });
+    await quoteBooking({ unitId: "u1", start: "a", end: "b", method: "pickup", addons: [] });
+    expect(sentBody(spy, 0).coupon).toBe("SUMMER10");
+    expect(sentBody(spy, 1)).not.toHaveProperty("coupon");
+    expect(sentBody(spy, 2)).not.toHaveProperty("coupon");
+    expect(FUNCTIONS["request-booking"].quote.sends).toContain("coupon");
+  });
+
+  it("CRITICAL: couponError comes through word for word, beside a quote that is still a quote", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => reply({ ...QUOTE_BODY, couponError: "This code isn't for this camper." })));
+    const r = await quoteBooking({ unitId: "u1", addons: [], coupon: "SUMMER10" });
+    expect(r.ok).toBe(true);
+    expect(r.quote.totalCents).toBe(SERVER_TOTAL);
+    expect(r.couponError).toBe("This code isn't for this camper.");
+    vi.stubGlobal("fetch", vi.fn(async () => reply(QUOTE_BODY)));
+    expect((await quoteBooking({ unitId: "u1", addons: [] })).couponError).toBe("");
+    vi.stubGlobal("fetch", vi.fn(async () => reply({ ...QUOTE_BODY, couponError: 7 })));
+    expect((await quoteBooking({ unitId: "u1", addons: [] })).couponError).toBe("");
+  });
+
+  it("CRITICAL: a request carries the code the guest applied, or \"\"", () => {
+    const base = { unitId: "u1", dates: { start: "a", end: "b" }, guest: { name: "J" }, delivery: { wanted: false }, addons: [] };
+    expect(buildPayload({ ...base, coupon: "summer10" }).coupon).toBe("SUMMER10");
+    expect(buildPayload(base).coupon).toBe("");
+    expect(FUNCTIONS["request-booking"].sends).toContain("coupon");
+  });
+
+  it("the box shows the link only when the page gives it a code to change", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async () => reply(QUOTE_BODY)));
+    const props = { unitId: "u1", dates: { start: "2026-11-01", end: "2026-11-05" }, method: "pickup", addons: [], ready: true };
+    const without = await mount(<QuoteBox {...props} />);
+    await tick();
+    expect(without.host.textContent).not.toContain("Have a coupon code?");
+    without.cleanup();
+    const withIt = await mount(<QuoteBox {...props} coupon={{ code: "", error: "" }} onCoupon={() => {}} />);
+    await tick();
+    expect(withIt.host.textContent).toContain("Have a coupon code?");
+    withIt.cleanup();
   });
 });

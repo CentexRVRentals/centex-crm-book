@@ -128,11 +128,23 @@ export function deliveryDestination(d) {
   return out.address.length >= 5 && out.city && out.state && out.zip ? out : null;
 }
 
-// Asks. Resolves to { ok: true, quote, path } | { ok: false, errors } |
-// { ok: false, unavailable: true } - never throws, never rejects, and an
-// aborted call (the guest changed something) resolves { aborted: true } so the
-// caller can ignore it.
-export async function quoteBooking({ unitId, start, end, method, addons, destination }, { signal } = {}) {
+// b0.22 (CRM v6.32) - A COUPON CODE, as the guest typed it, tidied the way
+// the server reads one: spaces out, upper case. "" for nothing. The server
+// decides whether it is a code at all.
+export function couponCode(raw) {
+  return typeof raw === "string" ? raw.replace(/\s+/g, "").toUpperCase() : "";
+}
+
+// Asks. Resolves to { ok: true, quote, path, couponError } | { ok: false,
+// errors } | { ok: false, unavailable: true } - never throws, never rejects,
+// and an aborted call (the guest changed something) resolves { aborted: true }
+// so the caller can ignore it.
+//
+// b0.22 (CRM v6.32) - `coupon`, the code the guest applied, sent only when
+// there is one. A code that does not apply is NOT a refusal: the quote comes
+// back without it, and `couponError` is the server's sentence, shown word for
+// word under the code.
+export async function quoteBooking({ unitId, start, end, method, addons, destination, coupon }, { signal } = {}) {
   const url = apiUrl();
   if (!url) {
     console.error("VITE_SUPABASE_URL is not set — the quote could not be asked for");
@@ -147,6 +159,7 @@ export async function quoteBooking({ unitId, start, end, method, addons, destina
         quote: true, unitId, start, end, method: method === "delivery" ? "delivery" : "pickup", addons,
         // b0.14 - only a complete address, and only for delivery.
         ...(method === "delivery" && deliveryDestination(destination) ? deliveryDestination(destination) : {}),
+        ...(couponCode(coupon) ? { coupon: couponCode(coupon) } : {}),
       }),
       signal,
     });
@@ -165,7 +178,10 @@ export async function quoteBooking({ unitId, start, end, method, addons, destina
   const quote = readQuote(body);
   // b0.17 (CRM v6.12) - which button the form shows. Only the word "book"
   // books; an older server, or anything else, is a request.
-  if (quote) return { ok: true, quote, path: body.path === "book" ? "book" : "request" };
+  if (quote) {
+    const couponError = typeof body.couponError === "string" ? body.couponError.trim() : "";
+    return { ok: true, quote, path: body.path === "book" ? "book" : "request", couponError };
+  }
   // A refusal - ONLY if it says it was a quote refusal, with sentences.
   if (body && body.ok === false && body.quote === true && Array.isArray(body.errors)) {
     const errors = body.errors.filter((e) => typeof e === "string" && e.trim());

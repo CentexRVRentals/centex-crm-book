@@ -242,6 +242,11 @@ describe("the contract itself is well formed", () => {
     expect(rb.quote.line).toEqual(["kind", "label", "addonId", "quantity", "nights", "unitPriceCents", "amountCents", "miles"]);
     // No tax rate ever reaches the guest (CRM: publicQuote sends amounts only).
     expect(JSON.stringify(rb.quote)).not.toMatch(/rate/i);
+    // b0.22 (CRM v6.32) - the guest's coupon code goes with a quote and a
+    // request; a code that does not apply comes back as couponError.
+    expect(rb.sends).toContain("coupon");
+    expect(rb.quote.sends).toContain("coupon");
+    expect(rb.quote.returns).toContain("couponError");
     // b0.21 (CRM v6.31) - and "coupon", the one line whose amount is below zero.
     expect(rb.quote.kinds).toEqual(["rental", "prep", "addon", "delivery", "tax", "coupon"]);
   });

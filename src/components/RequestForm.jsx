@@ -30,7 +30,11 @@ import { ADDRESS_DEBOUNCE_MS, ADDRESS_INCOMPLETE, QUOTE_DEBOUNCE_MS, deliveryDes
 // ([{ id, qty }], from addonsPayload on the camper page). The form sends them
 // and shows the live total above the send button, priced for pickup or
 // delivery as the box below is ticked.
-export default function RequestForm({ listing, busy, dates, addons = [], initialPath = "request", onCancel }) {
+//
+// b0.22 (CRM v6.32) - `coupon` ({ code, error }) and `onCoupon` are the camper
+// page's: the form's quote box shows and changes the same code, and the code
+// is sent with the request.
+export default function RequestForm({ listing, busy, dates, addons = [], coupon = null, onCoupon = null, initialPath = "request", onCancel }) {
   const nav = useNavigate();
   const [guest, setGuest] = useState({
     name: "", email: "", phone: "", guests: "", notes: "", company: "",
@@ -86,7 +90,7 @@ export default function RequestForm({ listing, busy, dates, addons = [], initial
     setBusy(true);
     setErrors([]);
     const result = await requestBooking(
-      buildPayload({ unitId: listing.unitId, dates, guest, delivery, addons, book: booking })
+      buildPayload({ unitId: listing.unitId, dates, guest, delivery, addons, book: booking, coupon: coupon?.code || "" })
     );
     setBusy(false);
 
@@ -245,6 +249,8 @@ export default function RequestForm({ listing, busy, dates, addons = [], initial
         debounceMs={delivery.wanted ? ADDRESS_DEBOUNCE_MS : QUOTE_DEBOUNCE_MS}
         inForm
         onPath={setPath}
+        coupon={coupon}
+        onCoupon={onCoupon}
         ready={checkDates({
           start: dates.start, end: dates.end, busy,
           minimumNights: listing.minimumNights, today: todayCentral(),

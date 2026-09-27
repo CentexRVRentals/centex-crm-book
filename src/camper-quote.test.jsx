@@ -129,3 +129,136 @@ describe("one camper page, start to finish", () => {
     host.remove();
   });
 });
+
+// ============================================================================
+// b0.22 (CRM v6.32) - THE COUPON CODE, ON THE SAME PAGE
+// ============================================================================
+describe("a coupon code on the camper page (b0.22)", () => {
+  const COUPON = { kind: "coupon", label: "Coupon SUMMER10 (10% off the rental)", addonId: null, quantity: 1, nights: null, unitPriceCents: null, amountCents: -4360 };
+  const setText = (input, v) => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    act(() => { setter.call(input, v); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  };
+
+  async function open(answer) {
+    const bodies = [];
+    vi.stubGlobal("fetch", vi.fn(async (_u, opts) => {
+      const b = JSON.parse(opts.body);
+      bodies.push(b);
+      return reply(answer(b));
+    }));
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <MemoryRouter initialEntries={["/camper/CHARLIE"]}>
+          <Routes>
+            <Route path="/camper/:unitId" element={<Camper />} />
+            <Route path="/requested/:reservationNum" element={<Requested />} />
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+    await flush();
+    vi.useFakeTimers();
+    const start = addDays(todayCentral(), 45);
+    const end = addDays(start, 4);
+    for (const iso of [start, end]) {
+      for (let i = 0; i < 4 && !host.querySelector(`button[aria-label="${iso}"]`); i++) click(button(host, "›") || host.querySelector('button[aria-label="Next month"]'));
+      click(host.querySelector(`button[aria-label="${iso}"]`));
+    }
+    const settle = async () => { await act(async () => { vi.advanceTimersByTime(QUOTE_DEBOUNCE_MS); }); await flush(); };
+    await settle();
+    return { host, root, bodies, settle };
+  }
+  const fill = (host) => {
+    const setVal = (label, v) => setText([...host.querySelectorAll("label")].find((l) => l.textContent.startsWith(label)).querySelector("input"), v);
+    setVal("Your name", "Jane Doe");
+    setVal("Email", "jane@example.com");
+  };
+
+  it("CRITICAL: behind a link; applied, it is priced, shown, carried into the form and sent with the request", async () => {
+    const { host, root, bodies, settle } = await open((b) => {
+      const lines = b.coupon === "SUMMER10" ? [...LINES, COUPON] : LINES;
+      const total = b.coupon === "SUMMER10" ? 57240 : 61600;
+      return b.quote
+        ? { ok: true, quote: true, lines, subtotalCents: total, taxCents: 0, totalCents: total }
+        : { ok: true, reservationNum: "WEB-260930-CPN1", lines, subtotalCents: total, taxCents: 0, totalCents: total };
+    });
+    // A link, not a box.
+    expect(host.querySelector('input[aria-label="Coupon code"]')).toBeNull();
+    expect(bodies.filter((b) => b.quote).every((b) => !("coupon" in b))).toBe(true);
+    click(button(host, "Have a coupon code?"));
+    setText(host.querySelector('input[aria-label="Coupon code"]'), " summer 10 ");
+    click(button(host, "Apply"));
+    await settle();
+    expect(bodies.filter((b) => b.quote).at(-1).coupon).toBe("SUMMER10");
+    expect(host.textContent).toContain("Coupon SUMMER10 (10% off the rental)");
+    expect(host.textContent).toContain("-$43.60");
+    expect(host.textContent).toContain("$572.40");
+    expect(host.textContent).toContain("Code SUMMER10 applied");
+
+    // The form's own box prices the same code, and the request carries it.
+    click(button(host, "Request these dates"));
+    await settle();
+    expect(bodies.filter((b) => b.quote).at(-1).coupon).toBe("SUMMER10");
+    expect(host.textContent).toContain("Code SUMMER10 applied");
+    fill(host);
+    click(button(host, "Send request"));
+    await flush();
+    expect(bodies.find((b) => !b.quote).coupon).toBe("SUMMER10");
+    expect(host.textContent).toContain("WEB-260930-CPN1");
+    expect(host.textContent).toContain("-$43.60");
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("CRITICAL: a code the server does not take - the prices stay, its sentence shows, and the request does NOT carry it", async () => {
+    const { host, root, bodies, settle } = await open((b) => (b.quote
+      ? { ok: true, quote: true, lines: LINES, subtotalCents: 61600, taxCents: 0, totalCents: 61600, ...(b.coupon ? { couponError: "This code has expired." } : {}) }
+      : { ok: true, reservationNum: "WEB-260930-CPN2", lines: LINES, subtotalCents: 61600, taxCents: 0, totalCents: 61600 }));
+    click(button(host, "Have a coupon code?"));
+    setText(host.querySelector('input[aria-label="Coupon code"]'), "OLDCODE");
+    const asked = bodies.filter((b) => b.quote).length;
+    click(button(host, "Apply"));
+    await settle();
+    await settle();
+    expect(host.textContent).toContain("This code has expired.");
+    expect(host.querySelector('[role="alert"]').textContent).toBe("This code has expired.");
+    expect(host.textContent).toContain("$616");
+    // Back in the box to fix, and asked for ONCE - the server's quote without
+    // the code is the quote for no code.
+    expect(host.querySelector('input[aria-label="Coupon code"]').value).toBe("OLDCODE");
+    expect(bodies.filter((b) => b.quote).slice(asked).map((b) => b.coupon ?? null)).toEqual(["OLDCODE"]);
+
+    click(button(host, "Request these dates"));
+    await settle();
+    fill(host);
+    click(button(host, "Send request"));
+    await flush();
+    expect(bodies.find((b) => !b.quote).coupon).toBe("");
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("Remove takes the code off and prices without it", async () => {
+    const { host, root, bodies, settle } = await open((b) => ({
+      ok: true, quote: true, lines: b.coupon ? [...LINES, COUPON] : LINES,
+      subtotalCents: b.coupon ? 57240 : 61600, taxCents: 0, totalCents: b.coupon ? 57240 : 61600,
+    }));
+    click(button(host, "Have a coupon code?"));
+    setText(host.querySelector('input[aria-label="Coupon code"]'), "SUMMER10");
+    click(button(host, "Apply"));
+    await settle();
+    expect(host.textContent).toContain("$572.40");
+    click(button(host, "Remove"));
+    await settle();
+    expect(bodies.filter((b) => b.quote).at(-1)).not.toHaveProperty("coupon");
+    expect(host.textContent).not.toContain("$572.40");
+    expect(host.textContent).toContain("$616");
+    expect(button(host, "Have a coupon code?")).toBeTruthy();
+    act(() => root.unmount());
+    host.remove();
+  });
+});
