@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Loading, ErrorState } from "../components/States.jsx";
 import { choosePayment, loadPayPage, payPageView } from "../lib/payments.js";
 import { usePageMeta } from "../lib/meta.js";
+import { AGREEMENT_WORDS, loadAgreement } from "../lib/agreement.js";
+import AgreementStep, { SignedCopyLink } from "../components/AgreementStep.jsx";
 
 // b0.12 — CHOOSE HOW TO PAY. /pay/:token, reached from the approval text.
 //
@@ -49,10 +51,24 @@ function usePrivatePage() {
 // where it would have gone: jsdom's location cannot be spied on.
 const toStripe = (url) => window.location.assign(url);
 
+// b0.25 (CRM v6.40) - AFTER SIGNING, BoldSign sends its window to this page
+// with ?signed=1 - INSIDE the window. That copy of the page says so and tells
+// the page around it (same origin), which then asks the CRM whether it is
+// signed; it shows nothing else, so the guest never sees a pay page in a pay page.
+const inFrame = () => { try { return window.self !== window.top; } catch { return true; } };
+
 export default function Pay({ leave = toStripe }) {
   const { token } = useParams();
+  const [params] = useSearchParams();
   usePageMeta({ title: "Choose how to pay | Centex RV Rentals", path: "/pay" });
   usePrivatePage();
+  const signedInFrame = params.get("signed") === "1" && inFrame();
+  useEffect(() => {
+    if (signedInFrame) window.parent.postMessage({ action: "centexSigned" }, window.location.origin);
+  }, [signedInFrame]);
+  // b0.25 - the rental agreement (lib/agreement.js). null until asked.
+  const [agreement, setAgreement] = useState(null);
+  const [justSigned, setJustSigned] = useState(null);
 
   const [state, setState] = useState({ loading: true, error: "", page: null });
   const [picked, setPicked] = useState("");
@@ -62,6 +78,8 @@ export default function Pay({ leave = toStripe }) {
 
   useEffect(() => {
     let live = true;
+    if (signedInFrame) return undefined;
+    loadAgreement(token).then((a) => { if (live) setAgreement(a); });
     loadPayPage(token).then((r) => {
       if (!live) return;
       if (!r.ok) return setState({ loading: false, error: r.error, page: null });
@@ -73,7 +91,10 @@ export default function Pay({ leave = toStripe }) {
     return () => { live = false; };
   }, [token, attempt]);
 
-  if (state.loading) return <div className="wrap"><Loading what="your booking" /></div>;
+  if (signedInFrame) {
+    return <div className="wrap"><p className="confirming" aria-live="polite">{AGREEMENT_WORDS.checking}</p></div>;
+  }
+  if (state.loading || agreement === null) return <div className="wrap"><Loading what="your booking" /></div>;
   if (state.error) {
     return (
       <div className="wrap">
@@ -83,6 +104,11 @@ export default function Pay({ leave = toStripe }) {
   }
 
   const view = payPageView(state.page);
+  // b0.25 - the step comes first while the agreement is needed and unsigned;
+  // the choices wait for the CRM to say it is signed.
+  const mustSign = agreement.needed && !agreement.signed && !justSigned;
+  const signed = agreement.signed || Boolean(justSigned);
+  const hasCopy = justSigned ? justSigned.hasCopy : agreement.hasCopy;
 
   async function go() {
     if (!picked || sending) return;
@@ -133,6 +159,17 @@ export default function Pay({ leave = toStripe }) {
           {view.paid ? <li><span className="k">Paid so far</span><span>{view.paid}</span></li> : null}
         </ul>
 
+        {mustSign ? (
+          <AgreementStep token={token} agreement={agreement} onSigned={(r) => setJustSigned(r)} />
+        ) : null}
+        {signed ? (
+          <p className="agreement-signed" role="status">
+            <strong>✓ {AGREEMENT_WORDS.signed}</strong>
+            {hasCopy ? <> · <SignedCopyLink token={token} /></> : null}
+          </p>
+        ) : null}
+
+        {mustSign ? null : (<>
         <fieldset className="choices" disabled={sending}>
           <legend className="sr">How would you like to pay?</legend>
           {view.choices.map((c) => (
@@ -158,6 +195,7 @@ export default function Pay({ leave = toStripe }) {
         <p className="card-meta">
           You'll pay on Stripe's secure checkout. We never see or store your card number.
         </p>
+        </>)}
         <p className="card-meta">
           Questions first? Call us and quote your reference. <Link to="/">See the campers</Link>
         </p>

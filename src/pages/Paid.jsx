@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { checkOutcome } from "../lib/payments.js";
+import { loadAgreement } from "../lib/agreement.js";
+import { SignedCopyLink } from "../components/AgreementStep.jsx";
 
 // Where Stripe sends the guest back to. Its own URL, for the same reason
 // Requested has one: a confirmation that vanishes on reload is a confirmation
@@ -101,6 +103,19 @@ export default function Paid() {
   const token = params.get("t") || "";
   const outcome = useOutcome(token, booked && !cancelled && Boolean(token));
   const words = booked && !cancelled ? OUTCOME_WORDS[token ? outcome : "untracked"] : null;
+  // b0.25 (CRM v6.40) - the signed rental agreement, when there is one. Asked
+  // with the same pay token; no token (a deposit return) means the pay page
+  // link in the guest's texts is where their copy is.
+  // Asked only once the booking is confirmed: an approved guest's return (no
+  // Book and pay) still asks the server nothing, as since b0.9.
+  const [hasCopy, setHasCopy] = useState(false);
+  const confirmed = booked && !cancelled && Boolean(token) && outcome === "booked";
+  useEffect(() => {
+    if (!confirmed) return undefined;
+    let live = true;
+    loadAgreement(token).then((a) => { if (live) setHasCopy(a.ok && a.hasCopy); });
+    return () => { live = false; };
+  }, [token, confirmed]);
 
   return (
     <div className="wrap">
@@ -145,6 +160,8 @@ export default function Paid() {
             the rest of it — we'll send a link for that closer to your dates.
           </p>
         ) : null}
+
+        {hasCopy ? <p className="card-meta"><SignedCopyLink token={token} /></p> : null}
 
         <p className="card-meta">
           Quote your reference if you call us.

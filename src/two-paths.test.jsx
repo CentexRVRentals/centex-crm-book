@@ -343,7 +343,10 @@ describe("the Confirming screen", () => {
     for (let i = 0; i < 2; i++) { await act(async () => { vi.advanceTimersByTime(POLL_MS); }); await flush(); }
     expect(page.h1()).toBe("You're booked");
     expect(page.text()).toContain("the camper is yours");
-    expect(fetch).toHaveBeenCalledTimes(3);
+    const calls = fetch.mock.calls.map(([u, o]) => [String(u).split("/functions/v1/")[1], JSON.parse(o.body).action]);
+    expect(calls.filter(([fn]) => fn === "payment-options")).toHaveLength(3);
+    // b0.25 - once booked (and only then), whether there is a signed agreement to link.
+    expect(calls.slice(3)).toEqual([["agreement", "show"]]);
     page.done();
   });
 

@@ -45,9 +45,14 @@ function answer(status, body) {
 }
 
 let fetchMock;
+// b0.25 - the pay page also asks `agreement` whether a rental agreement must
+// be signed. Answered apart (not needed), so the payment-options calls these
+// tests count are the page's only other calls. agreement.test.jsx drives it.
+let agreementMock;
 beforeEach(() => {
   fetchMock = vi.fn();
-  vi.stubGlobal("fetch", fetchMock);
+  agreementMock = vi.fn(async () => answer(200, { ok: true, needed: false, signed: false }));
+  vi.stubGlobal("fetch", (url, opts) => (String(url).includes("/functions/v1/agreement") ? agreementMock(url, opts) : fetchMock(url, opts)));
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => {

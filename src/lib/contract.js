@@ -1,7 +1,8 @@
 // THE CONTRACT.
 //
-// This repo reads five views in the Centex CRM's database and calls two Edge
-// Functions (request-booking; from b0.12, payment-options). That is the entire interface. It never reads a base table, never
+// This repo reads five views in the Centex CRM's database and calls four Edge
+// Functions (request-booking; payment-options from b0.12; quote-page from
+// b0.18; agreement from b0.25). That is the entire interface. It never reads a base table, never
 // writes anything directly, and shares no code with the CRM repo.
 //
 // WHY THIS FILE IS DATA AND NOT PROSE. A document describing another repo's
@@ -19,7 +20,7 @@
 // write the code that reads it. A column that fails the check does not exist
 // yet, whatever the CRM's migration says.
 
-export const CONTRACT_VERSION = "b0.13";
+export const CONTRACT_VERSION = "b0.25";
 
 // ----------------------------------------------------------------------------
 // The five views. Granted SELECT to `anon` and nothing else.
@@ -243,6 +244,28 @@ export const FUNCTIONS = {
     },
     probe: { body: { action: "show", token: "contract.check" }, status: 401, key: "error" },
   },
+
+  // b0.25 (CRM v6.40, Sprint 5) - the rental agreement, signed on the pay
+  // page through BoldSign (lib/agreement.js). Deployed --no-verify-jwt like
+  // payment-options: the same signed pay token is the credential.
+  //   show    needed / signed / signedAt / hasCopy / ready / emailOnFile /
+  //           sent / initials - what the pay page shows
+  //   start   `initials` ("each" | "once"), `email` only when the guest's
+  //           record has none -> `signLink` (BoldSign's, for the iframe), or
+  //           `pending: true` (202) while BoldSign prepares it, or `signed`
+  //   link    a new `signLink` for the document already sent
+  //   status  `signed`, `hasCopy` - asked after BoldSign's window says signed
+  //   copy    `url` - a 10-minute link to the signed PDF
+  agreement: {
+    why: "the rental agreement: signed on the pay page before the first payment",
+    method: "POST",
+    sends: ["action", "token", "initials", "email"],
+    returns: [
+      "ok", "needed", "signed", "signedAt", "hasCopy", "ready", "emailOnFile", "sent", "initials",
+      "signLink", "pending", "url", "error",
+    ],
+    probe: { body: { action: "show", token: "contract.check" }, status: 401, key: "error" },
+  },
 };
 
 // ----------------------------------------------------------------------------
@@ -253,6 +276,14 @@ export const FUNCTIONS = {
 // offline guard holds every other host out of the source.
 // ----------------------------------------------------------------------------
 export const OUTSIDE = {
+  // b0.25 (CRM v6.40) - BoldSign's signing app, shown in an iframe on the pay
+  // page. The CRM hands over the address; this site only checks it is
+  // BoldSign's, and that the window's messages came from there.
+  boldsign: {
+    why: "the rental agreement's signing window - never a price, never a card",
+    host: "https://app.boldsign.com",
+    file: "src/lib/agreement.js",
+  },
   mapbox: {
     why: "address suggestions on the delivery form - never a price",
     host: "https://api.mapbox.com",
