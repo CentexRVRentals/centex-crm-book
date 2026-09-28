@@ -1,10 +1,16 @@
-// b0.25 (CRM v6.40, Sprint 5) - THE RENTAL AGREEMENT, SIGNED ON THE PAY PAGE.
+// b0.25 (CRM v6.40, Sprint 5) - THE RENTAL AGREEMENT, SIGNED ON THE SITE.
 //
 // A website booking's guest signs the rental agreement - the fleet-wide base
 // agreement, the camper's Supplemental Rental Agreement and a signature page,
-// merged into one PDF by the CRM - before their first payment, once the office
-// has switched e-signing on. The signing itself is BoldSign's, embedded here
-// in an iframe; BoldSign sends the guest no emails of its own.
+// merged into one PDF by the CRM - once the office has switched e-signing on.
+// The signing itself is BoldSign's, embedded here in an iframe; BoldSign sends
+// the guest no emails of its own.
+//
+// b0.26 (CRM v6.41, Jesse 09-27) - AFTER THE PAYMENT, not before it. Nothing
+// here stops a guest paying. They are asked:
+//   * on /paid, straight back from Stripe (every return now carries `t`)
+//   * on the pay page, once something is paid (`paid` from `show`)
+//   * on /sign/<token>, the link in the office's Signing Reminder Text
 //
 // One Edge Function, `agreement`, deployed --no-verify-jwt like
 // payment-options: the signed pay token in the URL is the credential, so it
@@ -74,7 +80,8 @@ async function call(body) {
 // sentence if it should have been signed - the page cannot let a guest past.
 export async function loadAgreement(token) {
   const r = await call({ action: "show", token: String(token ?? "") });
-  if (!r.ok) return { ok: false, needed: false, error: r.error };
+  // b0.26 - the status too: /sign words a link that no longer verifies its own way.
+  if (!r.ok) return { ok: false, needed: false, error: r.error, status: r.status ?? 0 };
   const d = r.data;
   return {
     ok: true,
@@ -86,7 +93,17 @@ export async function loadAgreement(token) {
     emailOnFile: d.emailOnFile === true,
     sent: d.sent === true,
     initials: INITIALS.includes(d.initials) ? d.initials : "",
+    // b0.26 - something paid (the pay page asks only then), and the trip for /sign.
+    paid: d.paid === true,
+    trip: tripFrom(d.trip),
   };
+}
+
+function tripFrom(t) {
+  if (!t || typeof t !== "object") return null;
+  const text = (v) => (typeof v === "string" ? v.trim() : "");
+  const trip = { reservationNum: text(t.reservationNum), unitName: text(t.unitName), start: text(t.start), end: text(t.end) };
+  return trip.reservationNum ? trip : null;
 }
 
 // A link we will put in an iframe: BoldSign's signing app, and nothing else.
@@ -128,6 +145,26 @@ export async function signedCopy(token) {
   return { ok: true, url: r.data.url };
 }
 
+// b0.26 - OPENING THE SIGNED COPY. The sandbox test showed it: a window
+// opened AFTER the `copy` call is no longer the guest's tap, and browsers
+// (the Claude pane that day; iPhone Safari as a rule) block it. So the window
+// is opened AT the tap, blank, and pointed at the link when it comes; with no
+// window allowed at all, this tab goes there instead. `win` is the page's
+// window - a parameter only so the suite can watch.
+export async function openSignedCopy(token, win = window) {
+  let tab = null;
+  try { tab = win.open("", "_blank"); } catch { tab = null; }
+  if (tab) { try { tab.opener = null; } catch { /* a closed window cannot be written to */ } }
+  const r = await signedCopy(token);
+  if (!r.ok) {
+    if (tab) tab.close();
+    return r;
+  }
+  if (tab) tab.location.href = r.url;
+  else win.location.assign(r.url);
+  return r;
+}
+
 // What BoldSign's signing window tells the page (window.postMessage), only
 // when it really came from BoldSign. "signed" | "declined" | "failed" | "".
 // Our own redirect page (the pay page opened inside the window with
@@ -153,7 +190,10 @@ export const INITIALS_CHOICES = [
 
 export const AGREEMENT_WORDS = {
   heading: "Sign the rental agreement",
-  intro: "Before you pay, please read and sign the rental agreement for this camper. It opens here, and takes a couple of minutes.",
+  intro: "Please read and sign the rental agreement for this camper. It opens here, and takes a couple of minutes.",
+  // b0.26 - after the payment (/paid, the pay page).
+  afterHeading: "One more step: sign your rental agreement",
+  afterIntro: "Thanks for your payment. Please read and sign the rental agreement for this camper - it opens here and takes a couple of minutes.",
   notReady: "The rental agreement for this camper isn't ready yet. Please call us and we'll sort it out.",
   emailLabel: "Your email address",
   emailHint: "We use it to identify you on the signed agreement. We won't send you marketing.",
@@ -166,4 +206,8 @@ export const AGREEMENT_WORDS = {
   failed: "The signing didn't go through. Please start again, or call us.",
   slow: "We're still waiting for the signing service to confirm. Please reload this page in a minute.",
   copy: "View your signed rental agreement",
+  // b0.26 - the /sign page.
+  signTitle: "Your rental agreement",
+  nothingToSign: "There's nothing to sign for this booking right now. If you think that's wrong, please call us and quote your reference.",
+  badLink: "This signing link isn't valid any more. Please call us and we'll send you a new one.",
 };

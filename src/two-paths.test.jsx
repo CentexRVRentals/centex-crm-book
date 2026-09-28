@@ -292,12 +292,16 @@ describe("where Stripe returns a Book-and-pay guest", () => {
     expect(r.text).not.toContain("payment link in your text still works");
   });
 
-  it("CRITICAL: an approved guest's return never asks the server", () => {
+  // b0.26 (CRM v6.41) - it now asks the AGREEMENT function (the rental
+  // agreement is signed straight after paying), and still never the payment:
+  // no payment-options call, and the page says "Payment received" regardless.
+  it("CRITICAL: an approved guest's return never asks about the payment", () => {
     const fetch = vi.fn(async () => reply({ outcome: "taken" }));
     vi.stubGlobal("fetch", fetch);
     expect(render("/paid/WEB-1?t=tok.sig").h1).toBe("Payment received");
     expect(render("/paid/WEB-1?booked=1&t=tok.sig&cancelled=1").h1).toBe("Nothing was charged");
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch.mock.calls.every(([url]) => String(url).endsWith("/functions/v1/agreement"))).toBe(true);
+    expect(fetch.mock.calls.map(([, o]) => JSON.parse(o.body))).toEqual([{ action: "show", token: "tok.sig" }]);
   });
 
   it("an approved guest's return reads exactly as before", () => {

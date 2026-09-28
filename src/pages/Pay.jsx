@@ -32,7 +32,8 @@ import AgreementStep, { SignedCopyLink } from "../components/AgreementStep.jsx";
 // tags between pages, so leaving noindex behind would de-index the next page
 // the guest navigates to in the same tab.
 
-function usePrivatePage() {
+// b0.26 - exported: /sign carries the same token and needs the same care.
+export function usePrivatePage() {
   useEffect(() => {
     const added = [];
     for (const [name, content] of [["robots", "noindex, nofollow"], ["referrer", "no-referrer"]]) {
@@ -104,9 +105,11 @@ export default function Pay({ leave = toStripe }) {
   }
 
   const view = payPageView(state.page);
-  // b0.25 - the step comes first while the agreement is needed and unsigned;
-  // the choices wait for the CRM to say it is signed.
-  const mustSign = agreement.needed && !agreement.signed && !justSigned;
+  // b0.25 put the step first and held the choices back until signed.
+  // b0.26 (CRM v6.41, Jesse) - SIGNED AFTER THE PAYMENT: nothing here stops a
+  // guest paying. The step shows only once something is paid (`paid`), above
+  // the choices, which stay - a guest paying their balance is not held up.
+  const mustSign = agreement.needed && agreement.paid && !agreement.signed && !justSigned;
   const signed = agreement.signed || Boolean(justSigned);
   const hasCopy = justSigned ? justSigned.hasCopy : agreement.hasCopy;
 
@@ -160,7 +163,7 @@ export default function Pay({ leave = toStripe }) {
         </ul>
 
         {mustSign ? (
-          <AgreementStep token={token} agreement={agreement} onSigned={(r) => setJustSigned(r)} />
+          <AgreementStep token={token} agreement={agreement} onSigned={(r) => setJustSigned(r)} after />
         ) : null}
         {signed ? (
           <p className="agreement-signed" role="status">
@@ -169,7 +172,6 @@ export default function Pay({ leave = toStripe }) {
           </p>
         ) : null}
 
-        {mustSign ? null : (<>
         <fieldset className="choices" disabled={sending}>
           <legend className="sr">How would you like to pay?</legend>
           {view.choices.map((c) => (
@@ -195,7 +197,6 @@ export default function Pay({ leave = toStripe }) {
         <p className="card-meta">
           You'll pay on Stripe's secure checkout. We never see or store your card number.
         </p>
-        </>)}
         <p className="card-meta">
           Questions first? Call us and quote your reference. <Link to="/">See the campers</Link>
         </p>

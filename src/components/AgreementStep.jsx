@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  AGREEMENT_WORDS as W, INITIALS_CHOICES, checkSigned, signedCopy, signingEvent, signingLink, startSigning,
+  AGREEMENT_WORDS as W, INITIALS_CHOICES, checkSigned, openSignedCopy, signingEvent, signingLink, startSigning,
 } from "../lib/agreement.js";
 
-// b0.25 (CRM v6.40) - THE SIGNING STEP ON THE PAY PAGE (lib/agreement.js).
+// b0.25 (CRM v6.40) - THE SIGNING STEP (lib/agreement.js). b0.26 - after the
+// payment: on /paid, the pay page and /sign. `after` words it as the step that
+// follows a payment ("One more step").
 //
 //   choose    the guest picks how to initial (and gives an email if we have none)
 //   opening   the CRM builds the PDF and sends it to BoldSign
@@ -18,7 +20,8 @@ export const CHECK_TRIES = 20;
 export const WAIT_MS = 2000;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export default function AgreementStep({ token, agreement, onSigned, waitMs = WAIT_MS }) {
+export default function AgreementStep({ token, agreement, onSigned, waitMs = WAIT_MS, after = false }) {
+  const heading = after ? W.afterHeading : W.heading;
   const [phase, setPhase] = useState("choose");
   const [initials, setInitials] = useState("");
   const [email, setEmail] = useState("");
@@ -70,16 +73,16 @@ export default function AgreementStep({ token, agreement, onSigned, waitMs = WAI
 
   if (!agreement.ready) {
     return (
-      <section className="agreement" aria-label={W.heading}>
-        <h2>{W.heading}</h2>
+      <section className="agreement" aria-label={heading}>
+        <h2>{heading}</h2>
         <p className="cal-errors" role="alert">{W.notReady}</p>
       </section>
     );
   }
 
   return (
-    <section className="agreement" aria-label={W.heading}>
-      <h2>{W.heading}</h2>
+    <section className="agreement" aria-label={heading}>
+      <h2>{heading}</h2>
       {phase === "signing" ? (
         <iframe className="agreement-frame" title="Rental agreement" src={link} allow="fullscreen" />
       ) : phase === "checking" ? (
@@ -88,7 +91,7 @@ export default function AgreementStep({ token, agreement, onSigned, waitMs = WAI
         <p className="cal-errors" role="alert">{W.slow}</p>
       ) : (
         <>
-          <p className="card-meta">{W.intro}</p>
+          <p className="card-meta">{after ? W.afterIntro : W.intro}</p>
           {phase === "declined" || phase === "failed" ? <p className="cal-errors" role="alert">{W[phase]}</p> : null}
           {!agreement.emailOnFile ? (
             <label className="field">
@@ -122,14 +125,14 @@ export default function AgreementStep({ token, agreement, onSigned, waitMs = WAI
 }
 
 // "View your signed rental agreement" - a fresh 10-minute link, asked for at
-// the tap so a page left open never offers a dead one.
+// the tap so a page left open never offers a dead one. b0.26 - the window is
+// opened AT the tap (openSignedCopy), or a browser blocks it.
 export function SignedCopyLink({ token }) {
   const [error, setError] = useState("");
   async function view() {
     setError("");
-    const r = await signedCopy(token);
-    if (r.ok) window.open(r.url, "_blank", "noopener");
-    else setError(r.error);
+    const r = await openSignedCopy(token);
+    if (!r.ok) setError(r.error);
   }
   return (
     <>

@@ -20,7 +20,7 @@
 // write the code that reads it. A column that fails the check does not exist
 // yet, whatever the CRM's migration says.
 
-export const CONTRACT_VERSION = "b0.25";
+export const CONTRACT_VERSION = "b0.26";
 
 // ----------------------------------------------------------------------------
 // The five views. Granted SELECT to `anon` and nothing else.
@@ -249,7 +249,9 @@ export const FUNCTIONS = {
   // page through BoldSign (lib/agreement.js). Deployed --no-verify-jwt like
   // payment-options: the same signed pay token is the credential.
   //   show    needed / signed / signedAt / hasCopy / ready / emailOnFile /
-  //           sent / initials - what the pay page shows
+  //           sent / initials - what the pay page shows; b0.26 (CRM v6.41)
+  //           + paid (the pay page asks only once something is paid) and
+  //           trip (reservationNum / unitName / start / end, for /sign)
   //   start   `initials` ("each" | "once"), `email` only when the guest's
   //           record has none -> `signLink` (BoldSign's, for the iframe), or
   //           `pending: true` (202) while BoldSign prepares it, or `signed`
@@ -257,12 +259,12 @@ export const FUNCTIONS = {
   //   status  `signed`, `hasCopy` - asked after BoldSign's window says signed
   //   copy    `url` - a 10-minute link to the signed PDF
   agreement: {
-    why: "the rental agreement: signed on the pay page before the first payment",
+    why: "the rental agreement: signed after the payment - on /paid, the pay page and /sign",
     method: "POST",
     sends: ["action", "token", "initials", "email"],
     returns: [
       "ok", "needed", "signed", "signedAt", "hasCopy", "ready", "emailOnFile", "sent", "initials",
-      "signLink", "pending", "url", "error",
+      "paid", "trip", "signLink", "pending", "url", "error",
     ],
     probe: { body: { action: "show", token: "contract.check" }, status: 401, key: "error" },
   },

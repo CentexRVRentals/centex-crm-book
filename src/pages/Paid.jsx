@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { checkOutcome } from "../lib/payments.js";
-import { loadAgreement } from "../lib/agreement.js";
-import { SignedCopyLink } from "../components/AgreementStep.jsx";
+import { AGREEMENT_WORDS, loadAgreement } from "../lib/agreement.js";
+import AgreementStep, { SignedCopyLink } from "../components/AgreementStep.jsx";
 
 // Where Stripe sends the guest back to. Its own URL, for the same reason
 // Requested has one: a confirmation that vanishes on reload is a confirmation
@@ -103,19 +103,26 @@ export default function Paid() {
   const token = params.get("t") || "";
   const outcome = useOutcome(token, booked && !cancelled && Boolean(token));
   const words = booked && !cancelled ? OUTCOME_WORDS[token ? outcome : "untracked"] : null;
-  // b0.25 (CRM v6.40) - the signed rental agreement, when there is one. Asked
-  // with the same pay token; no token (a deposit return) means the pay page
-  // link in the guest's texts is where their copy is.
-  // Asked only once the booking is confirmed: an approved guest's return (no
-  // Book and pay) still asks the server nothing, as since b0.9.
-  const [hasCopy, setHasCopy] = useState(false);
-  const confirmed = booked && !cancelled && Boolean(token) && outcome === "booked";
+  // b0.25 (CRM v6.40) - the signed rental agreement, when there is one.
+  // b0.26 (CRM v6.41, Jesse 09-27) - AND THE SIGNING ITSELF, straight after
+  // paying: "One more step: sign your rental agreement". Asked of the
+  // agreement function with the pay token every return now carries (`t`) -
+  // never of the payment, which this page still does not look up (above).
+  // A Book-and-pay guest is asked once the booking is confirmed; an approved
+  // guest's deposit return at once. A return with no token (a checkout made
+  // before v6.41) asks nothing; the office's reminder reaches that guest.
+  const [agreement, setAgreement] = useState(null);
+  const [justSigned, setJustSigned] = useState(null);
+  const ready = !cancelled && Boolean(token) && (booked ? outcome === "booked" : true);
   useEffect(() => {
-    if (!confirmed) return undefined;
+    if (!ready) return undefined;
     let live = true;
-    loadAgreement(token).then((a) => { if (live) setHasCopy(a.ok && a.hasCopy); });
+    loadAgreement(token).then((a) => { if (live) setAgreement(a.ok ? a : null); });
     return () => { live = false; };
-  }, [token, confirmed]);
+  }, [token, ready]);
+  const mustSign = Boolean(agreement && agreement.needed && !agreement.signed && !justSigned);
+  const signed = Boolean(agreement && (agreement.signed || justSigned));
+  const hasCopy = justSigned ? justSigned.hasCopy : Boolean(agreement && agreement.hasCopy);
 
   return (
     <div className="wrap">
@@ -161,7 +168,15 @@ export default function Paid() {
           </p>
         ) : null}
 
-        {hasCopy ? <p className="card-meta"><SignedCopyLink token={token} /></p> : null}
+        {mustSign ? (
+          <AgreementStep token={token} agreement={agreement} onSigned={(r) => setJustSigned(r)} after />
+        ) : null}
+        {signed ? (
+          <p className="agreement-signed" role="status">
+            <strong>✓ {AGREEMENT_WORDS.signed}</strong>
+            {hasCopy ? <> · <SignedCopyLink token={token} /></> : null}
+          </p>
+        ) : null}
 
         <p className="card-meta">
           Quote your reference if you call us.
