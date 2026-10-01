@@ -1,4 +1,5 @@
 import { supabase, photoUrl } from "./supabase.js";
+import { deliveryMaxMiles, deliverySites } from "./delivery.js";
 
 // THE ONLY MODULE THAT QUERIES. Components call these; they never touch
 // `supabase` directly.
@@ -88,13 +89,14 @@ function toListing(row) {
     prepFee: num(r.prep_fee),
     prepFeeDescription: text(r.prep_fee_description),
 
-    // Delivery pricing is SHOWN, not calculated. The office quotes the fee at
-    // approval; a distance calculation on a public page would be a second
-    // opinion about money.
-    deliveryMinimum: num(r.delivery_minimum),
-    deliveryMiles: num(r.delivery_miles),
-    deliveryDollarMile: num(r.delivery_dollar_mile),
-    deliveryMilesMax: num(r.delivery_miles_max),
+    // b0.27 (CRM v6.72) - WHERE a camper delivers, never what it costs: the
+    // quote box prices the drive to the guest's address (request-booking).
+    //   deliveryOffered   a range bound or at least one site
+    //   deliveryMaxMiles  the range bound's reach (null: sites only, or none)
+    //   deliverySites     [{ name, city, withinMiles }] - names and towns only
+    deliveryOffered: r.delivery_offered === true,
+    deliveryMaxMiles: deliveryMaxMiles(r.delivery_max_miles),
+    deliverySites: deliverySites(r.delivery_sites),
 
     checkIn: text(r.check_in),
     checkOut: text(r.check_out),

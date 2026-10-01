@@ -27,7 +27,7 @@ import Requested from "./pages/Requested.jsx";
 
 const LISTING = {
   unitId: "u1", name: "Igloo", pricePerNight: 109, minimumNights: 2,
-  deliveryDollarMile: 3, deliveryMilesMax: 100, prepFee: 75,
+  deliveryOffered: true, deliveryMaxMiles: 100, prepFee: 75,
 };
 // NEAR-FUTURE, not 2099. The first version used 2099 and every submit was
 // refused with "That's further ahead than we're booking right now" — the
@@ -331,9 +331,22 @@ describe("the form", () => {
   });
 
   it("a camper with no delivery pricing offers no delivery", async () => {
-    const m = await mount(form({ listing: { ...LISTING, deliveryDollarMile: null } }));
+    const m = await mount(form({ listing: { ...LISTING, deliveryOffered: false, deliveryMaxMiles: null } }));
     expect(m.host.querySelector('input[type="checkbox"]')).toBeNull();
     m.cleanup();
+  });
+
+  // b0.27 (CRM v6.72) - a camper that delivers only to its sites still
+  // offers delivery, and says where; one with a range bound says how far.
+  it("CRITICAL: a site-only camper offers delivery, named by its sites", async () => {
+    const m = await mount(form({ listing: { ...LISTING, deliveryOffered: true, deliveryMaxMiles: null,
+      deliverySites: [{ name: "Pecan Grove", city: "Buda", withinMiles: 2 }] } }));
+    expect(m.host.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(m.host.textContent).toContain("Deliver it to me (to Pecan Grove (Buda))");
+    m.cleanup();
+    const r = await mount(form({ listing: LISTING }));
+    expect(r.host.textContent).toContain("Deliver it to me (within 100 miles)");
+    r.cleanup();
   });
 });
 

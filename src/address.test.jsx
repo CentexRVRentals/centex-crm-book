@@ -83,7 +83,7 @@ describe("suggestAddresses", () => {
 
 describe("the delivery form", () => {
   const soon = (n) => addDays(todayCentral(), n);
-  const LISTING = { unitId: "u1", name: "Charlie", pricePerNight: 99, minimumNights: 2, deliveryDollarMile: 6.5, deliveryMilesMax: 75 };
+  const LISTING = { unitId: "u1", name: "Charlie", pricePerNight: 99, minimumNights: 2, deliveryOffered: true, deliveryMaxMiles: 75 };
   const QUOTE = { ok: true, quote: true, lines: [{ kind: "rental", label: "Rental", addonId: null, quantity: 1, nights: 2, unitPriceCents: 9900, amountCents: 19800 }], subtotalCents: 19800, taxCents: 0, totalCents: 19800, estimate: false };
 
   async function mountForm() {

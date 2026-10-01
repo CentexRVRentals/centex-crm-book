@@ -154,7 +154,10 @@ describe("nothing about the tenant is hardcoded", () => {
 // about the world, and a fixture nobody checks against the contract is a
 // claim that agrees with itself.
 describe("fixtures and reads agree with the contract", () => {
-  const KNOWN = new Map(Object.entries(VIEWS).map(([v, s]) => [v, new Set([...s.required, ...s.optional])]));
+  // b0.27 - plus the keys a view's jsonb column carries (VIEWS[v].nested).
+  const KNOWN = new Map(Object.entries(VIEWS).map(([v, s]) => [v, new Set([
+    ...s.required, ...s.optional, ...Object.values(s.nested || {}).flat(),
+  ])]));
 
   it("CRITICAL: every column the data layer reads is in the contract", () => {
     // listings.js reads rows as `r?.column_name`. Any snake_case property it

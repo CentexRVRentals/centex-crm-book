@@ -5,6 +5,7 @@ import { checkDates, todayCentral } from "../lib/dates.js";
 import { QuoteBox } from "./Quote.jsx";
 import { suggestAddresses, suggestionsEnabled, SUGGEST_DEBOUNCE_MS } from "../lib/address.js";
 import { ADDRESS_DEBOUNCE_MS, ADDRESS_INCOMPLETE, QUOTE_DEBOUNCE_MS, deliveryDestination } from "../lib/quote.js";
+import { deliveryNote } from "../lib/delivery.js";
 
 // The request form. Name, contact, delivery if wanted, submit.
 //
@@ -171,7 +172,9 @@ export default function RequestForm({ listing, busy, dates, addons = [], coupon 
           <input type="number" min="1" max="20" value={guest.guests} onChange={set("guests")} inputMode="numeric" />
         </label>
 
-        {listing.deliveryDollarMile ? (
+        {/* b0.27 (CRM v6.72) - offered whenever the camper has a range bound
+            or a site (it was only when it had a $/mile). */}
+        {listing.deliveryOffered ? (
           <>
             <label className="check">
               <input
@@ -181,7 +184,7 @@ export default function RequestForm({ listing, busy, dates, addons = [], coupon 
               />
               <span>
                 Deliver it to me
-                {listing.deliveryMilesMax ? ` (within ${listing.deliveryMilesMax} miles)` : ""}
+                {deliveryNote(listing)}
               </span>
             </label>
             {delivery.wanted ? (

@@ -64,7 +64,8 @@ const LISTING = {
   sleeps: 6, tvs: 1, interior_dimensions: "26 ft", unit_description: "A good one.",
   fresh_water_tank: "50 gal", grey_water_tank: "40 gal", black_water_tank: "30 gal",
   minimum_nights: 2, security_deposit: 500, prep_fee: 75, prep_fee_description: "Prep & sanitise",
-  delivery_minimum: 50, delivery_miles: 20, delivery_dollar_mile: 3, delivery_miles_max: 100,
+  // b0.27 - where it delivers, never a price (CRM v6.72).
+  delivery_offered: true, delivery_max_miles: 100, delivery_sites: [],
   check_in: "10:00", check_out: "16:00", minimum_guest_age: 25,
   pet_friendly: true, festival_friendly: false, tailgate_friendly: true,
   beach_friendly: false, smoking_allowed: false,
@@ -262,15 +263,31 @@ describe("the camper page", () => {
 
   // b0.16 (Jesse, 09-24) - "Delivery available within 75 miles." and nothing
   // about the rate: the quote box prices the drive exactly.
-  it("CRITICAL: the delivery sentence is Jesse's - the radius, and no rate", async () => {
-    TABLES = { public_listings: [LISTING], public_listing_photos: [], public_listing_addons: [], public_listing_amenities: [] };
-    const { html } = await renderAsync(camperPage("mt1yujz87zxzve"));
-    expect(html()).toContain("Delivery available within 100 miles.");
-    expect(html()).not.toMatch(/for the first|a mile|confirm the delivery price|from \$50/);
-    TABLES = { public_listings: [{ ...LISTING, delivery_miles_max: null }], public_listing_photos: [], public_listing_addons: [], public_listing_amenities: [] };
-    const noMax = await renderAsync(camperPage("mt1yujz87zxzve"));
-    expect(noMax.html()).toContain("Delivery available.");
-    expect(noMax.html()).not.toMatch(/Delivery available within/);
+  // b0.27 (CRM v6.72) - from delivery_offered / delivery_max_miles /
+  // delivery_sites, in four cases. Was shown only when the camper had a
+  // $/mile, which hid Tier-1-only range bounds and site-only campers.
+  it("CRITICAL: the delivery sentence is Jesse's - the radius, the sites, and no rate", async () => {
+    const page = async (row) => {
+      TABLES = { public_listings: [{ ...LISTING, ...row }], public_listing_photos: [], public_listing_addons: [], public_listing_amenities: [] };
+      return (await renderAsync(camperPage("mt1yujz87zxzve"))).html();
+    };
+    const SITES = [{ name: "Pecan Grove", city: "Buda", within_miles: 2 }, { name: "Lake Camp", city: "", within_miles: 5 }];
+
+    const range = await page({});
+    expect(range).toContain("Delivery available within 100 miles.");
+    expect(range).not.toMatch(/delivers to|Delivery to:/);
+    expect(range).not.toMatch(/for the first|a mile|confirm the delivery price|from \$/);
+
+    const both = await page({ delivery_sites: SITES });
+    expect(both).toContain("Delivery available within 100 miles.");
+    expect(both).toContain("Also delivers to: Pecan Grove (Buda), Lake Camp.");
+
+    const sitesOnly = await page({ delivery_max_miles: null, delivery_sites: SITES });
+    expect(sitesOnly).toContain("Delivery to: Pecan Grove (Buda), Lake Camp.");
+    expect(sitesOnly).not.toMatch(/Delivery available/);
+
+    const none = await page({ delivery_offered: false, delivery_max_miles: null });
+    expect(none).not.toMatch(/Delivery available|Delivery to:|delivers to/);
   });
 
   it("CRITICAL: an unknown camper is Not Found, not an error", async () => {

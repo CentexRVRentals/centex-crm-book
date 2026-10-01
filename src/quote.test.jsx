@@ -449,7 +449,7 @@ describe("the quote box", () => {
 // ----------------------------------------------------------------------------
 describe("the request form prices what it sends", () => {
   const soon = (n) => addDays(todayCentral(), n);
-  const LISTING = { unitId: "u1", name: "Charlie", pricePerNight: 109, minimumNights: 2, deliveryDollarMile: 3, deliveryMilesMax: 100 };
+  const LISTING = { unitId: "u1", name: "Charlie", pricePerNight: 109, minimumNights: 2, deliveryOffered: true, deliveryMaxMiles: 100 };
   const form = (addons) => (
     <MemoryRouter>
       <RequestForm listing={LISTING} busy={[]} dates={{ start: soon(30), end: soon(34) }} addons={addons} onCancel={() => {}} />

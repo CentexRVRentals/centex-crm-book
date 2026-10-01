@@ -20,7 +20,7 @@
 // write the code that reads it. A column that fails the check does not exist
 // yet, whatever the CRM's migration says.
 
-export const CONTRACT_VERSION = "b0.26";
+export const CONTRACT_VERSION = "b0.27";
 
 // ----------------------------------------------------------------------------
 // The five views. Granted SELECT to `anon` and nothing else.
@@ -38,12 +38,22 @@ export const VIEWS = {
       "interior_dimensions", "fresh_water_tank", "grey_water_tank", "black_water_tank",
       "unit_description", "minimum_nights", "security_deposit",
       "prep_fee", "prep_fee_description",
-      "delivery_minimum", "delivery_miles", "delivery_dollar_mile", "delivery_miles_max",
+      // b0.27 (CRM v6.72, Fleet Delivery Pricing R2): where a camper
+      // delivers - a range bound's reach and its sites' names - never a price.
+      // The four v6.0x columns (minimum, miles, $/mile, max) are not read, and
+      // CRM v6.73 (R3) drops them.
+      "delivery_offered", "delivery_max_miles", "delivery_sites",
       "check_in", "check_out", "minimum_guest_age",
       "pet_friendly", "festival_friendly", "tailgate_friendly", "beach_friendly", "smoking_allowed",
       "custom_rule_1", "custom_rule_2", "custom_rule_3", "custom_rule_4", "custom_rule_5",
       "cancellation_policy",
     ],
+    // b0.27 - the keys INSIDE a jsonb column, the shape delivery.js reads.
+    // Not columns (the live check does not look for them), but pinned here so
+    // a test fixture cannot invent one.
+    nested: {
+      delivery_sites: ["name", "city", "within_miles"],
+    },
   },
 
   public_listing_photos: {

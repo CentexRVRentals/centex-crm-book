@@ -31,7 +31,7 @@ vi.mock("./lib/supabase.js", () => {
 const { default: Camper } = await import("./pages/Camper.jsx");
 const { default: Requested } = await import("./pages/Requested.jsx");
 
-const LISTING = { unit_id: "CHARLIE", name: "Charlie", price_per_night: 109, minimum_nights: 2, delivery_dollar_mile: 3, delivery_minimum: 75 };
+const LISTING = { unit_id: "CHARLIE", name: "Charlie", price_per_night: 109, minimum_nights: 2, delivery_offered: true, delivery_max_miles: 100 };
 const ADDONS = [
   { addon_id: "kit", unit_id: "CHARLIE", name: "Cleaning kit", price: 40, daily: false, max_quantity: 1, required: true, position: 0 },
   { addon_id: "gen", unit_id: "CHARLIE", name: "Generator", price: 35, daily: true, max_quantity: 1, position: 1 },

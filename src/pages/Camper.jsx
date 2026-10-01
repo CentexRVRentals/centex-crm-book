@@ -4,6 +4,7 @@ import {
   fetchListing, fetchPhotos, fetchAddons, fetchAmenities, fetchBusyDates,
   money, text,
 } from "../lib/listings.js";
+import { deliveryLines } from "../lib/delivery.js";
 import DatePicker from "../components/DatePicker.jsx";
 import RequestForm from "../components/RequestForm.jsx";
 import AddonPicker from "../components/AddonPicker.jsx";
@@ -123,11 +124,17 @@ export default function Camper() {
                 and nothing about the rate: the quote box prices the drive to
                 the guest's address exactly, so the listing does not explain
                 it. No max set: "Delivery available." */}
-            {u.deliveryDollarMile ? (
-              <p className="card-meta" style={{ marginTop: 12, marginBottom: 0 }}>
-                {`Delivery available${u.deliveryMilesMax ? ` within ${u.deliveryMilesMax} miles` : ""}.`}
-              </p>
-            ) : null}
+            {/* b0.27 (CRM v6.72, Fleet Delivery Pricing R2) - from where the
+                camper delivers, still nothing about the rate:
+                  range bound          "Delivery available within 75 miles."
+                  range bound + sites  ...then "Also delivers to: Pecan Grove (Buda)."
+                  sites only           "Delivery to: Pecan Grove (Buda)."
+                  neither              nothing.
+                Was shown only when the camper had a $/mile, which hid a
+                Tier-1-only range bound and every site-only camper. */}
+            {deliveryLines(u).map((line) => (
+              <p key={line} className="card-meta" style={{ marginTop: 12, marginBottom: 0 }}>{line}</p>
+            ))}
           </div>
 
           {/* b0.13 - the picker sits between the dates and the total, and
